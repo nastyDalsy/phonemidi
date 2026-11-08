@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main, master]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -24,21 +24,24 @@ jobs:
           packages: 'platforms;android-35 build-tools;34.0.0'
 
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk PhoneMIDI.apk
 
+      # Download from the run page: Actions -> this run -> Artifacts
       - uses: actions/upload-artifact@v4
         with:
           name: PhoneMIDI-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: PhoneMIDI.apk
 
-      # Direct download link: GitHub repo -> Releases -> "Latest APK"
+      # Direct download link: GitHub repo -> Releases -> "Latest APK" (main/master only)
       - uses: softprops/action-gh-release@v2
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         with:
           tag_name: latest
           name: Latest APK
           prerelease: true
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: PhoneMIDI.apk

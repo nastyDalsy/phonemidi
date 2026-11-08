@@ -166,29 +166,42 @@ public class BlePeripheral {
                 BluetoothAdapter a = bm.getAdapter();
                 if (a != null && a.getName() != null) name = "'" + a.getName() + "'";
             } catch (Exception ignored) { }
-            status = "visible as " + name;
-            updateStatusText();
+            baseName = "visible as " + name;
+            refreshConnStatus();
         }
 
         @Override
         public void onStartFailure(int errorCode) {
-            status = "advertise failed (code " + errorCode + ")";
+            if (errorCode == ADVERTISE_FAILED_ALREADY_STARTED) return;
+            status = "advertise failed (" + advError(errorCode) + ")";
             changed();
         }
     };
 
-    private String baseName = "";
+    private static String advError(int code) {
+        switch (code) {
+            case AdvertiseCallback.ADVERTISE_FAILED_DATA_TOO_LARGE: return "name too long";
+            case AdvertiseCallback.ADVERTISE_FAILED_TOO_MANY_ADVERTISERS: return "too many advertisers";
+            case AdvertiseCallback.ADVERTISE_FAILED_FEATURE_UNSUPPORTED: return "not supported";
+            case AdvertiseCallback.ADVERTISE_FAILED_INTERNAL_ERROR: return "internal error";
+            default: return "code " + code;
+        }
+    }
 
-    private void updateStatusText() {
-        if (status.startsWith("visible as")) baseName = status;
-        else if (!baseName.isEmpty() && status.startsWith("connected")) { /* keep */ }
-        changed();
+    private volatile String baseName = "";
+
+    /** Some phones stop advertising once a central connects; restart so others can find us. */
+    @SuppressLint("MissingPermission")
+    private void restartAdvertising() {
+        if (!running || adv == null) return;
+        try { adv.stopAdvertising(advCb); } catch (Exception ignored) { }
+        startAdvertising();
     }
 
     private void refreshConnStatus() {
         int n;
         synchronized (lock) { n = subscribed.size(); }
-        if (!baseName.isEmpty()) {
+        if (running && !baseName.isEmpty()) {
             status = baseName + (n > 0 ? " · " + n + " connected" : " · waiting for connection");
         }
         changed();
@@ -206,8 +219,9 @@ public class BlePeripheral {
 
         @Override
         public void onConnectionStateChange(BluetoothDevice dev, int st, int newState) {
+            boolean lost = newState != BluetoothProfile.STATE_CONNECTED;
             synchronized (lock) {
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                if (!lost) {
                     connected.add(dev);
                 } else {
                     connected.remove(dev);
@@ -215,7 +229,9 @@ public class BlePeripheral {
                     pending = 0;
                 }
             }
+            if (lost) restartAdvertising();
             refreshConnStatus();
+            if (lost) pump();
         }
 
         @Override

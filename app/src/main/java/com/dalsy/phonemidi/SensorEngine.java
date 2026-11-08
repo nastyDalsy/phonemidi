@@ -63,6 +63,8 @@ public class SensorEngine implements SensorEventListener {
     private boolean motionOn = false;
     private float gx, gy, gz;
     private boolean gInit = false;
+    /** Gravity reading treated as "flat / centered" for the tilt sources. */
+    public volatile float calX = 0f, calY = 0f;
 
     // camera
     private boolean camOn = false;
@@ -80,6 +82,7 @@ public class SensorEngine implements SensorEventListener {
 
     // audio
     private volatile boolean audioRun = false;
+    private volatile int audioGen = 0;
     private Thread audioThread;
 
     public SensorEngine(Context c) {
@@ -131,8 +134,8 @@ public class SensorEngine implements SensorEventListener {
             gx += 0.1f * (x - gx);
             gy += 0.1f * (y - gy);
             gz += 0.1f * (z - gz);
-            v[0] = (clamp(gx / 9.81f, -1f, 1f) + 1f) / 2f;
-            v[1] = (clamp(gy / 9.81f, -1f, 1f) + 1f) / 2f;
+            v[0] = (clamp((gx - calX) / 9.81f, -1f, 1f) + 1f) / 2f;
+            v[1] = (clamp((gy - calY) / 9.81f, -1f, 1f) + 1f) / 2f;
             float lx = x - gx, ly = y - gy, lz = z - gz;
             float mag = (float) Math.sqrt(lx * lx + ly * ly + lz * lz);
             v[6] = clamp(mag / 15f, 0f, 1f);
@@ -144,6 +147,14 @@ public class SensorEngine implements SensorEventListener {
             if (mag < 0.05f) mag = 0f;
             v[5] = clamp(mag / 6f, 0f, 1f);
         }
+    }
+
+    /** Use the current phone position as the center (0.5) for both tilt sources. */
+    public boolean calibrate() {
+        if (!motionOn || !gInit) return false;
+        calX = gx;
+        calY = gy;
+        return true;
     }
 
     @Override
@@ -255,11 +266,14 @@ public class SensorEngine implements SensorEventListener {
                 @Override
                 public void onDisconnected(CameraDevice d) {
                     d.close();
+                    // Another app took the camera: allow a later restart.
+                    if (gen == camGen) camOn = false;
                 }
 
                 @Override
                 public void onError(CameraDevice d, int error) {
                     d.close();
+                    if (gen == camGen) camOn = false;
                 }
             }, camHandler);
         } catch (Exception e) {
@@ -360,18 +374,20 @@ public class SensorEngine implements SensorEventListener {
     public void setAudio(boolean on) {
         if (!on) {
             audioRun = false;
+            audioGen++;
             return;
         }
         if (audioRun) return;
         if (ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) return;
         audioRun = true;
-        audioThread = new Thread(this::audioLoop, "pm-audio");
+        final int gen = ++audioGen;
+        audioThread = new Thread(() -> audioLoop(gen), "pm-audio");
         audioThread.start();
     }
 
     @SuppressLint("MissingPermission")
-    private void audioLoop() {
+    private void audioLoop(int gen) {
         AudioRecord ar = null;
         try {
             int sr = 44100;
@@ -381,13 +397,13 @@ public class SensorEngine implements SensorEventListener {
             ar = new AudioRecord(MediaRecorder.AudioSource.MIC, sr,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, size);
             if (ar.getState() != AudioRecord.STATE_INITIALIZED) {
-                audioRun = false;
+                if (gen == audioGen) audioRun = false;
                 return;
             }
             ar.startRecording();
             short[] buf = new short[1024];
             float lvl = 0f, br = 0f;
-            while (audioRun) {
+            while (audioRun && gen == audioGen) {
                 int r = ar.read(buf, 0, buf.length);
                 if (r <= 0) continue;
                 double s = 0;
@@ -410,14 +426,16 @@ public class SensorEngine implements SensorEventListener {
                 v[12] = br;
             }
         } catch (Exception ignored) {
-            audioRun = false;
+            if (gen == audioGen) audioRun = false;
         } finally {
             if (ar != null) {
                 try { ar.stop(); } catch (Exception ignored) { }
                 ar.release();
             }
-            v[11] = 0f;
-            v[12] = 0f;
+            if (gen == audioGen) {
+                v[11] = 0f;
+                v[12] = 0f;
+            }
         }
     }
 

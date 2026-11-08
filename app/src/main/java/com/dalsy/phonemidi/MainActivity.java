@@ -63,6 +63,10 @@ public class MainActivity extends Activity {
     private Button btBtn, camBtn;
     private final ArrayList<Mapping> barMaps = new ArrayList<>();
     private final ArrayList<ProgressBar> bars = new ArrayList<>();
+    private final ArrayList<TextView> barLabels = new ArrayList<>();
+
+    /** When set, only this mapping sends MIDI (makes DAW "MIDI learn" easy). Not saved. */
+    private Mapping solo = null;
 
     private boolean camFront = true;
     private int tickCount = 0;
@@ -79,7 +83,13 @@ public class MainActivity extends Activity {
         loadMaps();
         buildUi();
         askPerms();
+        autoStartBle();
         updateStatus();
+    }
+
+    /** Turn the BLE MIDI peripheral back on if it was on last time. */
+    private void autoStartBle() {
+        if (prefs().getBoolean("bleOn", false) && !hub.ble.running) hub.ble.start();
     }
 
     @Override
@@ -130,6 +140,7 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         super.onRequestPermissionsResult(code, perms, results);
         applyNeeds();
+        autoStartBle();
         updateStatus();
     }
 
@@ -156,6 +167,8 @@ public class MainActivity extends Activity {
 
     private void loadMaps() {
         camFront = prefs().getBoolean("camFront", true);
+        eng.calX = prefs().getFloat("calX", 0f);
+        eng.calY = prefs().getFloat("calY", 0f);
         String s = prefs().getString("maps", null);
         if (s == null) {
             defaults();
@@ -216,6 +229,7 @@ public class MainActivity extends Activity {
         long now = SystemClock.uptimeMillis();
         for (Mapping m : maps) {
             if (!m.enabled) continue;
+            boolean muted = solo != null && solo != m;
             float raw = eng.v[m.source];
             switch (SensorEngine.GAIN_MODE[m.source]) {
                 case 0: raw = raw * m.sens; break;
@@ -230,6 +244,7 @@ public class MainActivity extends Activity {
                 if (!m.above && raw >= m.threshold && now - m.lastTrig >= 100) {
                     m.above = true;
                     m.lastTrig = now;
+                    if (muted) continue;
                     int vel = Math.max(1, Math.min(127, 40 + Math.round(raw * 87f)));
                     final int ch = m.channel, nn = m.number;
                     hub.send(new byte[]{(byte) (0x90 | ch), (byte) nn, (byte) vel});
@@ -246,6 +261,7 @@ public class MainActivity extends Activity {
                 continue;
             }
 
+            if (muted) continue;
             float val = m.outMin + m.filtered * (m.outMax - m.outMin);
             val = Math.max(0f, Math.min(127f, val));
             if (m.type == Mapping.CC) {
@@ -265,6 +281,23 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** All notes off + all sound off on every channel, for stuck notes. */
+    private void panic() {
+        releaseHeldNotes();
+        for (int ch = 0; ch < 16; ch++) {
+            hub.send(new byte[]{(byte) (0xB0 | ch), 123, 0});
+            hub.send(new byte[]{(byte) (0xB0 | ch), 120, 0});
+        }
+        Toast.makeText(this, "All notes off sent", Toast.LENGTH_SHORT).show();
+    }
+
+    private void setSolo(Mapping m) {
+        solo = (solo == m) ? null : m;
+        for (Mapping x : maps) x.lastSent = -1; // re-send current values
+        rebuild();
+        updateStatus();
+    }
+
     private void releaseHeldNotes() {
         for (int key : new ArrayList<>(held)) {
             hub.send(new byte[]{(byte) (0x80 | (key >> 8)), (byte) (key & 0xFF), 0});
@@ -277,7 +310,20 @@ public class MainActivity extends Activity {
             Mapping m = barMaps.get(i);
             float shown = m.type == Mapping.NOTE ? m.lastRaw : m.filtered;
             bars.get(i).setProgress(Math.round(clamp01(shown) * 1000f));
+            barLabels.get(i).setText(liveText(m));
         }
+    }
+
+    private String liveText(Mapping m) {
+        String ch = "ch " + (m.channel + 1);
+        if (!m.enabled) return "off";
+        String muted = (solo != null && solo != m) ? "  (muted by solo)" : "";
+        if (m.type == Mapping.NOTE) {
+            return "Note " + noteName(m.number) + " · " + ch + (m.above ? "  ● HIT" : "") + muted;
+        }
+        int v = Math.max(0, m.lastSent);
+        if (m.type == Mapping.CC) return "CC " + m.number + " = " + v + " · " + ch + muted;
+        return "Pitch bend = " + (v - 8192) + " · " + ch + muted;
     }
 
     // ------------------------------------------------------------ UI
@@ -323,17 +369,44 @@ public class MainActivity extends Activity {
             changed();
             updateStatus();
         });
+        Button center = new Button(this);
+        center.setText("Center tilt here");
+        center.setOnClickListener(v -> {
+            if (eng.calibrate()) {
+                prefs().edit().putFloat("calX", eng.calX).putFloat("calY", eng.calY).apply();
+                Toast.makeText(this, "Tilt centered on current position", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Enable a tilt/motion mapping first", Toast.LENGTH_SHORT).show();
+            }
+        });
+        center.setOnLongClickListener(v -> {
+            eng.calX = 0f;
+            eng.calY = 0f;
+            prefs().edit().remove("calX").remove("calY").apply();
+            Toast.makeText(this, "Tilt center reset to flat", Toast.LENGTH_SHORT).show();
+            return true;
+        });
+        row2.addView(camBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row2.addView(center, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        root.addView(row2);
+
+        LinearLayout row3 = new LinearLayout(this);
         Button add = new Button(this);
         add.setText("+ Add mapping");
         add.setOnClickListener(v -> {
-            maps.add(new Mapping(0, Mapping.CC, 30, 1.0f, true));
+            int used = 29;
+            for (Mapping m : maps) if (m.type == Mapping.CC) used = Math.max(used, m.number);
+            maps.add(new Mapping(0, Mapping.CC, Math.min(127, used + 1), 1.0f, true));
             saveMaps();
             rebuild();
             applyNeeds();
         });
-        row2.addView(camBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        row2.addView(add, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        root.addView(row2);
+        Button panic = new Button(this);
+        panic.setText("Panic (notes off)");
+        panic.setOnClickListener(v -> panic());
+        row3.addView(add, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row3.addView(panic, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        root.addView(row3);
 
         listBox = new LinearLayout(this);
         listBox.setOrientation(LinearLayout.VERTICAL);
@@ -342,12 +415,19 @@ public class MainActivity extends Activity {
 
         Button reset = new Button(this);
         reset.setText("Reset all mappings to defaults");
-        reset.setOnClickListener(v -> {
-            defaults();
-            saveMaps();
-            rebuild();
-            applyNeeds();
-        });
+        reset.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("Reset all mappings?")
+                .setMessage("Your current mappings will be replaced by the defaults.")
+                .setPositiveButton("Reset", (d, w) -> {
+                    solo = null;
+                    defaults();
+                    saveMaps();
+                    rebuild();
+                    applyNeeds();
+                    updateStatus();
+                })
+                .setNegativeButton("Cancel", null)
+                .show());
         root.addView(reset);
 
         setContentView(sv);
@@ -358,6 +438,7 @@ public class MainActivity extends Activity {
         listBox.removeAllViews();
         bars.clear();
         barMaps.clear();
+        barLabels.clear();
         for (Mapping m : maps) listBox.addView(buildRow(m));
     }
 
@@ -418,7 +499,11 @@ public class MainActivity extends Activity {
     private View buildRow(final Mapping m) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundColor(0xFF1E1E26);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xFF1E1E26);
+        bg.setCornerRadius(dp(10));
+        if (solo == m) bg.setStroke(dp(2), 0xFFFFB020);
+        card.setBackground(bg);
         card.setPadding(dp(12), dp(8), dp(12), dp(12));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -443,14 +528,31 @@ public class MainActivity extends Activity {
         });
         Button del = new Button(this);
         del.setText("✕");
-        del.setOnClickListener(v -> {
-            maps.remove(m);
-            saveMaps();
-            rebuild();
-            applyNeeds();
-        });
+        del.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("Delete this mapping?")
+                .setMessage(SensorEngine.NAMES[m.source])
+                .setPositiveButton("Delete", (d, w) -> {
+                    if (solo == m) solo = null;
+                    maps.remove(m);
+                    saveMaps();
+                    rebuild();
+                    applyNeeds();
+                    updateStatus();
+                })
+                .setNegativeButton("Cancel", null)
+                .show());
+        Button soloBtn = new Button(this);
+        soloBtn.setText(solo == m ? "SOLO" : "Solo");
+        if (solo == m) soloBtn.setTextColor(0xFFFFB020);
+        soloBtn.setOnClickListener(v -> setSolo(m));
+        for (Button bt : new Button[]{soloBtn, del}) {
+            bt.setMinWidth(0);
+            bt.setMinimumWidth(0);
+            bt.setPadding(dp(10), bt.getPaddingTop(), dp(10), bt.getPaddingBottom());
+        }
         r1.addView(cb);
         r1.addView(src, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        r1.addView(soloBtn);
         r1.addView(del);
         card.addView(r1);
 
@@ -507,17 +609,27 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
         blp.topMargin = dp(12);
         card.addView(bar, blp);
+        TextView live = new TextView(this);
+        live.setTextSize(12);
+        live.setTextColor(0xFF8FD3A8);
+        live.setPadding(0, dp(4), 0, 0);
+        live.setText(liveText(m));
+        card.addView(live);
         bars.add(bar);
         barMaps.add(m);
+        barLabels.add(live);
         return card;
     }
 
     private void toggleBle() {
         if (hub.ble.running) {
             hub.ble.stop();
+            prefs().edit().putBoolean("bleOn", false).apply();
         } else if (!hub.ble.start()) {
             Toast.makeText(this, hub.ble.status, Toast.LENGTH_LONG).show();
             askPerms();
+        } else {
+            prefs().edit().putBoolean("bleOn", true).apply();
         }
         updateStatus();
     }
@@ -530,6 +642,10 @@ public class MainActivity extends Activity {
             sb.append("\nDirect output: none (use 'Connect synth / USB')");
         } else {
             for (MidiHub.Out o : hub.outs) sb.append("\nDirect output → ").append(o.name);
+        }
+        if (solo != null) {
+            sb.append("\nSOLO: only '").append(SensorEngine.NAMES[solo.source])
+                    .append("' is sending — use this for MIDI learn, tap Solo again to release");
         }
         status.setText(sb.toString());
         btBtn.setText(hub.ble.running ? "Bluetooth: ON" : "Bluetooth: OFF");

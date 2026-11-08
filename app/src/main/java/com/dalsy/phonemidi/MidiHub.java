@@ -53,8 +53,12 @@ public class MidiHub {
             try {
                 o.port.send(msg, 0, msg.length);
             } catch (Exception e) {
-                outs.remove(o);
-                main.post(listener::onChanged);
+                // Device went away: drop it and free its resources.
+                if (outs.remove(o)) {
+                    try { o.port.close(); } catch (Exception ignored) { }
+                    try { o.dev.close(); } catch (Exception ignored) { }
+                    main.post(listener::onChanged);
+                }
             }
         }
     }

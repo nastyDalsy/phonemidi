@@ -57,14 +57,19 @@ public class Mapping {
         Mapping m = new Mapping();
         m.enabled = o.optBoolean("on", true);
         m.source = Math.max(0, Math.min(SensorEngine.COUNT - 1, o.optInt("src", 0)));
-        m.type = o.optInt("type", CC);
+        m.type = Math.max(CC, Math.min(NOTE, o.optInt("type", CC)));
         m.channel = Math.max(0, Math.min(15, o.optInt("ch", 0)));
         m.number = Math.max(0, Math.min(127, o.optInt("num", 21)));
-        m.sens = (float) o.optDouble("sens", 1.0);
-        m.smooth = (float) o.optDouble("smooth", 0.3);
-        m.outMin = (float) o.optDouble("min", 0.0);
-        m.outMax = (float) o.optDouble("max", 127.0);
-        m.threshold = (float) o.optDouble("thr", 0.5);
+        m.sens = clamp((float) o.optDouble("sens", 1.0), 0.25f, 8f);
+        m.smooth = clamp((float) o.optDouble("smooth", 0.3), 0f, 0.95f);
+        m.outMin = clamp((float) o.optDouble("min", 0.0), 0f, 127f);
+        m.outMax = clamp((float) o.optDouble("max", 127.0), 0f, 127f);
+        m.threshold = clamp((float) o.optDouble("thr", 0.5), 0.05f, 0.95f);
         return m;
+    }
+
+    private static float clamp(float x, float lo, float hi) {
+        if (Float.isNaN(x)) return lo;
+        return x < lo ? lo : (x > hi ? hi : x);
     }
 }
