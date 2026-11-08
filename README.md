@@ -3,10 +3,12 @@
 Phone motion / camera / microphone -> Bluetooth MIDI (CC, pitch bend, note triggers).
 
 ## Get the APK (no Android Studio needed)
-Every push builds the app automatically with GitHub Actions (~3-5 min).
-- **From `main`:** repo -> Releases -> "Latest APK" -> download `PhoneMIDI.apk`.
-- **From any branch:** repo -> Actions -> pick the run -> Artifacts -> `PhoneMIDI-apk`
-  (it downloads as a .zip with the APK inside).
+Every push builds the app automatically with GitHub Actions (~3-5 min) and publishes it.
+
+**Direct download (open this on the phone):**
+https://github.com/nastyDalsy/phonemidi/releases/download/latest/PhoneMIDI.apk
+
+Or: repo -> Releases -> "Latest APK" -> `PhoneMIDI.apk`.
 
 Install it on the phone (allow "install unknown apps" for your browser / file manager).
 
