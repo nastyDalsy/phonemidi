@@ -15,8 +15,10 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
@@ -84,6 +86,10 @@ public class SensorEngine implements SensorEventListener {
     private volatile boolean audioRun = false;
     private volatile int audioGen = 0;
     private Thread audioThread;
+    /** When true the mic audio is also played out (to headphones / USB audio / speaker). */
+    private volatile boolean passthrough = false;
+    private volatile boolean wantAudio = false;
+    private volatile float passGain = 1.0f;
 
     public SensorEngine(Context c) {
         ctx = c;
@@ -371,10 +377,31 @@ public class SensorEngine implements SensorEventListener {
 
     // ------------------------------------------------------------ audio
 
+    public boolean isPassthrough() { return passthrough; }
+
+    /** Play the microphone out loud (mic -> audio output). Takes effect immediately. */
+    public void setPassthrough(boolean on) {
+        if (on == passthrough) return;
+        passthrough = on;
+        stopAudio();            // restart the capture loop with / without the output
+        setAudio(wantAudio);
+    }
+
+    private void stopAudio() {
+        audioRun = false;
+        audioGen++;
+        Thread t = audioThread;
+        if (t != null && t != Thread.currentThread()) {
+            try { t.join(300); } catch (InterruptedException ignored) { }
+        }
+    }
+
+    /** Mic level meter / passthrough needs the capture loop; mapping needs set {@code on}. */
     public void setAudio(boolean on) {
+        wantAudio = on;
+        on = on || passthrough;
         if (!on) {
-            audioRun = false;
-            audioGen++;
+            stopAudio();
             return;
         }
         if (audioRun) return;
@@ -389,6 +416,7 @@ public class SensorEngine implements SensorEventListener {
     @SuppressLint("MissingPermission")
     private void audioLoop(int gen) {
         AudioRecord ar = null;
+        AudioTrack at = null;
         try {
             int sr = 44100;
             int min = AudioRecord.getMinBufferSize(sr, AudioFormat.CHANNEL_IN_MONO,
@@ -401,11 +429,29 @@ public class SensorEngine implements SensorEventListener {
                 return;
             }
             ar.startRecording();
+            if (passthrough) {
+                int tmin = AudioTrack.getMinBufferSize(sr, AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT);
+                at = new AudioTrack.Builder()
+                        .setAudioAttributes(new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                        .setAudioFormat(new AudioFormat.Builder()
+                                .setSampleRate(sr)
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                        .setBufferSizeInBytes(Math.max(tmin, 2048))
+                        .setTransferMode(AudioTrack.MODE_STREAM)
+                        .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                        .build();
+                at.play();
+            }
             short[] buf = new short[1024];
             float lvl = 0f, br = 0f;
             while (audioRun && gen == audioGen) {
                 int r = ar.read(buf, 0, buf.length);
                 if (r <= 0) continue;
+                if (at != null) at.write(buf, 0, r);
                 double s = 0;
                 int zc = 0;
                 for (int i = 0; i < r; i++) {
@@ -432,6 +478,10 @@ public class SensorEngine implements SensorEventListener {
                 try { ar.stop(); } catch (Exception ignored) { }
                 ar.release();
             }
+            if (at != null) {
+                try { at.stop(); } catch (Exception ignored) { }
+                at.release();
+            }
             if (gen == audioGen) {
                 v[11] = 0f;
                 v[12] = 0f;
@@ -442,6 +492,7 @@ public class SensorEngine implements SensorEventListener {
     public void stopAll() {
         setMotion(false);
         setCamera(false, camFrontNow);
-        setAudio(false);
+        wantAudio = false;
+        stopAudio();
     }
 }

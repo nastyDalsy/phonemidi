@@ -30,6 +30,10 @@ Or open the folder in Android Studio and press Run.
   doesn't pick up a different sensor. Tap again to release.
 - **Center tilt here**: hold the phone the way you like and tap it; that position becomes
   the middle value (64). Long-press to go back to "flat on the table".
+- **Mic → audio output**: plays the microphone sound out of the phone's audio output
+  (headphone jack, USB audio adapter, Bluetooth audio or speaker) so you can feed it to a
+  synth/mixer input. Use headphones or a cable, not the speaker, or you get feedback.
+  Works only while the app is open with the screen on, like the sensors.
 - **Panic**: sends All Notes Off / All Sound Off on all 16 channels.
 - Ableton: Options > MIDI map mode, click a parameter, press **Solo** on a card and move
   the phone. Live learns the CC.

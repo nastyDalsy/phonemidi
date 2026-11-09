@@ -60,7 +60,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout listBox;
     private TextView status;
-    private Button btBtn, camBtn;
+    private Button btBtn, camBtn, passBtn;
     private final ArrayList<Mapping> barMaps = new ArrayList<>();
     private final ArrayList<ProgressBar> bars = new ArrayList<>();
     private final ArrayList<TextView> barLabels = new ArrayList<>();
@@ -204,6 +204,9 @@ public class MainActivity extends Activity {
         }
         eng.setMotion(motion);
         eng.setCamera(cam, camFront);
+        eng.setPassthrough(prefs().getBoolean("micPass", false)
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED);
         eng.setAudio(mic);
     }
 
@@ -407,6 +410,18 @@ public class MainActivity extends Activity {
         row3.addView(add, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         row3.addView(panic, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(row3);
+
+        passBtn = new Button(this);
+        passBtn.setOnClickListener(v -> {
+            boolean on = !prefs().getBoolean("micPass", false);
+            prefs().edit().putBoolean("micPass", on).apply();
+            if (on) Toast.makeText(this,
+                    "Mic goes to the audio output. Use headphones / USB audio to avoid feedback.",
+                    Toast.LENGTH_LONG).show();
+            applyNeeds();
+            updateStatus();
+        });
+        root.addView(passBtn);
 
         listBox = new LinearLayout(this);
         listBox.setOrientation(LinearLayout.VERTICAL);
@@ -650,6 +665,8 @@ public class MainActivity extends Activity {
         status.setText(sb.toString());
         btBtn.setText(hub.ble.running ? "Bluetooth: ON" : "Bluetooth: OFF");
         camBtn.setText(camFront ? "Camera: front" : "Camera: back");
+        passBtn.setText(prefs().getBoolean("micPass", false)
+                ? "Mic → audio output: ON" : "Mic → audio output: OFF");
     }
 
     // ------------------------------------------------------------ connect dialog
