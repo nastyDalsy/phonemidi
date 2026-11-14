@@ -19,24 +19,15 @@ Build locally instead (needs the Android SDK, e.g. via Android Studio):
 Or open the folder in Android Studio and press Run.
 
 ## Use
-- **Bluetooth: ON** makes the phone appear as a BLE MIDI device (named like the phone).
-  The app remembers this and turns it back on next time.
-- **Connect synth / USB** connects the phone TO a BLE MIDI synth, a USB MIDI device,
-  or the phone's own USB MIDI port (set USB mode to "MIDI" when plugged into a PC).
-- Each card = one mapping: source -> CC / pitch bend / note trigger. Camera/mic sources
-  only switch on when a mapping using them is enabled. The green line under each card
-  shows the value being sent right now.
-- **Solo** on a card: only that mapping sends MIDI. Use it for MIDI learn so the DAW
-  doesn't pick up a different sensor. Tap again to release.
-- **Center tilt here**: hold the phone the way you like and tap it; that position becomes
-  the middle value (64). Long-press to go back to "flat on the table".
-- **Mic → audio output**: plays the microphone sound out of the phone's audio output
-  (headphone jack, USB audio adapter, Bluetooth audio or speaker) so you can feed it to a
-  synth/mixer input. Use headphones or a cable, not the speaker, or you get feedback.
-  Works only while the app is open with the screen on, like the sensors.
-- **Panic**: sends All Notes Off / All Sound Off on all 16 channels.
-- Ableton: Options > MIDI map mode, click a parameter, press **Solo** on a card and move
-  the phone. Live learns the CC.
+1. Turn on Bluetooth on the synth (FM-1: hold HOME) or plug it in with a USB-C cable.
+2. In the app tap **Conectar FM-1 / USB** and pick the synth. Do not pair it in Android settings.
+3. Tap **Probar nota** to hear that it works.
+4. Pick a **scene** (Expresivo, Vibrato, Voz, Percusión, Cámara). Each scene is a few
+   gestures -> sound controls. Tap a gesture to change what it controls (pitch bend,
+   vibrato, volume, expression, brightness, reverb...) and choose Suave / Medio / Fuerte.
+5. **Centrar inclinación**: hold the phone the way you play and tap it.
+- **Ajustes avanzados** has the full mapping editor, camera choice, Solo for MIDI learn,
+  "visible por Bluetooth" (phone shows up as a MIDI device for Ableton) and mic -> audio output.
 - Keep the app open with the screen on (it stops sensors when backgrounded).
 
 ## Project layout

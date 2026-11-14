@@ -50,7 +50,43 @@ public class MainActivity extends Activity {
 
     private static final String[] NOTE_NAMES =
             {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    private static final String[] TYPE_NAMES = {"Control change (CC)", "Pitch bend", "Note trigger"};
+    private static final String[] TYPE_NAMES = {"Control change (CC)", "Pitch bend", "Nota"};
+
+    /** Musician-friendly names for each sensor source (same order as SensorEngine). */
+    private static final String[] GESTURES = {
+            "Inclinar izquierda ↔ derecha",
+            "Inclinar adelante ↔ atrás",
+            "Girar el teléfono (twist)",
+            "Rotar en X",
+            "Rotar en Y",
+            "Velocidad de movimiento",
+            "Sacudir",
+            "Cámara: cuánto te mueves",
+            "Cámara: luz",
+            "Cámara: mano izquierda ↔ derecha",
+            "Cámara: mano arriba ↕ abajo",
+            "Voz: volumen",
+            "Voz: agudo ↔ grave"
+    };
+
+    /** What a gesture can control, in musical terms. */
+    private static final String[] DEST_NAMES = {
+            "Pitch bend (afinación)", "Vibrato (mod wheel)", "Volumen", "Expresión",
+            "Brillo (filtro)", "Resonancia", "Reverb", "Chorus", "Nota (disparo)",
+            "Otro CC (avanzado)"};
+    private static final int[] DEST_TYPE = {Mapping.PB, Mapping.CC, Mapping.CC, Mapping.CC,
+            Mapping.CC, Mapping.CC, Mapping.CC, Mapping.CC, Mapping.NOTE, Mapping.CC};
+    private static final int[] DEST_NUM = {0, 1, 7, 11, 74, 71, 91, 93, 60, -1};
+
+    private static final String[] SCENES = {"Expresivo", "Vibrato", "Voz", "Percusión", "Cámara"};
+    private static final String[] SCENE_HELP = {
+            "Inclina para doblar la nota y abrir el brillo; muévete para dar vibrato.",
+            "Mientras más te mueves, más vibrato. Inclinar adelante/atrás abre el brillo.",
+            "Canta o habla: tu voz controla expresión y brillo.",
+            "Sacude para tocar una nota; inclinar cambia el brillo.",
+            "Mueve la mano frente a la cámara: izquierda↔derecha = brillo, arriba↕abajo = vibrato."};
+    private static final float[] SENS_LEVELS = {0.7f, 1.5f, 3f};
+    private static final String[] SENS_NAMES = {"Suave", "Medio", "Fuerte"};
 
     private SensorEngine eng;
     private MidiHub hub;
@@ -60,7 +96,13 @@ public class MainActivity extends Activity {
 
     private LinearLayout listBox;
     private TextView status;
-    private Button btBtn, camBtn, passBtn;
+    private Button btBtn, camBtn, passBtn, advToggle;
+    private LinearLayout playBox, advBox;
+    private TextView connLine, sceneHelp;
+    private final ArrayList<Button> sceneBtns = new ArrayList<>();
+    private final ArrayList<Mapping> playMaps = new ArrayList<>();
+    private final ArrayList<ProgressBar> playBars = new ArrayList<>();
+    private final ArrayList<TextView> playLabels = new ArrayList<>();
     private final ArrayList<Mapping> barMaps = new ArrayList<>();
     private final ArrayList<ProgressBar> bars = new ArrayList<>();
     private final ArrayList<TextView> barLabels = new ArrayList<>();
@@ -151,18 +193,55 @@ public class MainActivity extends Activity {
     }
 
     private void defaults() {
+        fillScene(0);
+    }
+
+    private Mapping mk(int src, int type, int num, float sens, float smooth) {
+        Mapping m = new Mapping(src, type, num, sens, true);
+        m.smooth = smooth;
+        return m;
+    }
+
+    /** Fills {@link #maps} with one of the ready-made scenes. */
+    private void fillScene(int i) {
         maps.clear();
-        maps.add(new Mapping(0, Mapping.CC, 21, 1.0f, true));   // tilt left/right
-        maps.add(new Mapping(1, Mapping.CC, 22, 1.0f, true));   // tilt top/bottom
-        maps.add(new Mapping(5, Mapping.CC, 23, 2.0f, true));   // rotation speed
-        Mapping shake = new Mapping(6, Mapping.NOTE, 36, 2.0f, true); // shake -> note C1
-        shake.threshold = 0.5f;
-        maps.add(shake);
-        maps.add(new Mapping(7, Mapping.CC, 24, 1.0f, false));  // camera motion
-        maps.add(new Mapping(9, Mapping.CC, 25, 1.0f, false));  // camera X
-        maps.add(new Mapping(10, Mapping.CC, 26, 1.0f, false)); // camera Y
-        maps.add(new Mapping(11, Mapping.CC, 27, 1.5f, false)); // mic level
-        maps.add(new Mapping(12, Mapping.CC, 28, 1.0f, false)); // mic brightness
+        switch (i) {
+            case 1: // Vibrato
+                maps.add(mk(5, Mapping.CC, 1, 2.5f, 0.5f));
+                maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
+                break;
+            case 2: // Voz
+                maps.add(mk(11, Mapping.CC, 11, 1.5f, 0.3f));
+                maps.add(mk(12, Mapping.CC, 74, 1.0f, 0.4f));
+                break;
+            case 3: { // Percusión
+                Mapping hit = mk(6, Mapping.NOTE, 60, 2.0f, 0f);
+                hit.threshold = 0.5f;
+                maps.add(hit);
+                maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
+                break;
+            }
+            case 4: // Cámara
+                maps.add(mk(9, Mapping.CC, 74, 1.0f, 0.4f));
+                maps.add(mk(10, Mapping.CC, 1, 1.0f, 0.4f));
+                break;
+            default: // Expresivo
+                maps.add(mk(0, Mapping.PB, 0, 1.2f, 0.35f));
+                maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
+                maps.add(mk(5, Mapping.CC, 1, 2.5f, 0.5f));
+                break;
+        }
+    }
+
+    private void applyScene(int i) {
+        releaseHeldNotes();
+        solo = null;
+        fillScene(i);
+        prefs().edit().putInt("scene", i).apply();
+        saveMaps();
+        rebuild();
+        applyNeeds();
+        updateStatus();
     }
 
     private void loadMaps() {
@@ -291,7 +370,7 @@ public class MainActivity extends Activity {
             hub.send(new byte[]{(byte) (0xB0 | ch), 123, 0});
             hub.send(new byte[]{(byte) (0xB0 | ch), 120, 0});
         }
-        Toast.makeText(this, "All notes off sent", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Notas cortadas", Toast.LENGTH_SHORT).show();
     }
 
     private void setSolo(Mapping m) {
@@ -315,6 +394,12 @@ public class MainActivity extends Activity {
             bars.get(i).setProgress(Math.round(clamp01(shown) * 1000f));
             barLabels.get(i).setText(liveText(m));
         }
+        for (int i = 0; i < playBars.size(); i++) {
+            Mapping m = playMaps.get(i);
+            float shown = m.type == Mapping.NOTE ? m.lastRaw : m.filtered;
+            playBars.get(i).setProgress(Math.round(clamp01(shown) * 1000f));
+            playLabels.get(i).setText(friendlyLive(m));
+        }
     }
 
     private String liveText(Mapping m) {
@@ -335,6 +420,20 @@ public class MainActivity extends Activity {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    private TextView label(String t) {
+        TextView v = new TextView(this);
+        v.setText(t);
+        v.setTextSize(12);
+        v.setTextColor(0xFF8A8AA0);
+        v.setLetterSpacing(0.1f);
+        v.setPadding(0, dp(18), 0, dp(6));
+        return v;
+    }
+
+    private static LinearLayout.LayoutParams weight() {
+        return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+    }
+
     private void buildUi() {
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(0xFF121216);
@@ -349,112 +448,353 @@ public class MainActivity extends Activity {
         title.setTextColor(0xFFFFFFFF);
         root.addView(title);
 
-        status = new TextView(this);
-        status.setTextSize(13);
-        status.setTextColor(0xFFB8B8C8);
-        status.setPadding(0, dp(6), 0, dp(10));
-        root.addView(status);
+        connLine = new TextView(this);
+        connLine.setTextSize(15);
+        connLine.setPadding(0, dp(6), 0, dp(8));
+        root.addView(connLine);
 
-        LinearLayout row1 = new LinearLayout(this);
-        btBtn = new Button(this);
-        btBtn.setOnClickListener(v -> toggleBle());
+        LinearLayout rowA = new LinearLayout(this);
         Button conn = new Button(this);
-        conn.setText("Connect synth / USB");
+        conn.setText("Conectar FM-1 / USB");
         conn.setOnClickListener(v -> showConnect());
-        row1.addView(btBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        row1.addView(conn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        root.addView(row1);
+        Button test = new Button(this);
+        test.setText("♪ Probar nota");
+        test.setOnClickListener(v -> testNote());
+        rowA.addView(conn, weight());
+        rowA.addView(test, weight());
+        root.addView(rowA);
 
-        LinearLayout row2 = new LinearLayout(this);
-        camBtn = new Button(this);
-        camBtn.setOnClickListener(v -> {
-            camFront = !camFront;
-            changed();
-            updateStatus();
-        });
+        // ---- scenes
+        root.addView(label("ESCENAS · elige cómo te expresas"));
+        sceneBtns.clear();
+        LinearLayout sr = null;
+        for (int i = 0; i < SCENES.length; i++) {
+            if (i % 3 == 0) {
+                sr = new LinearLayout(this);
+                root.addView(sr);
+            }
+            final int idx = i;
+            Button b = new Button(this);
+            b.setAllCaps(false);
+            b.setOnClickListener(v -> applyScene(idx));
+            sceneBtns.add(b);
+            sr.addView(b, weight());
+        }
+        sceneHelp = new TextView(this);
+        sceneHelp.setTextSize(13);
+        sceneHelp.setTextColor(0xFFB8B8C8);
+        sceneHelp.setPadding(dp(4), dp(6), dp(4), 0);
+        root.addView(sceneHelp);
+
+        // ---- gestures
+        root.addView(label("GESTOS → SONIDO · toca uno para cambiar qué controla"));
+        playBox = new LinearLayout(this);
+        playBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(playBox);
+
+        LinearLayout rowB = new LinearLayout(this);
+        Button addG = new Button(this);
+        addG.setText("+ Añadir gesto");
+        addG.setOnClickListener(v -> addGesture());
         Button center = new Button(this);
-        center.setText("Center tilt here");
+        center.setText("Centrar inclinación");
         center.setOnClickListener(v -> {
             if (eng.calibrate()) {
                 prefs().edit().putFloat("calX", eng.calX).putFloat("calY", eng.calY).apply();
-                Toast.makeText(this, "Tilt centered on current position", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Listo: esta posición es el centro", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(this, "Enable a tilt/motion mapping first", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Activa primero un gesto de inclinación", Toast.LENGTH_SHORT).show();
             }
         });
         center.setOnLongClickListener(v -> {
             eng.calX = 0f;
             eng.calY = 0f;
             prefs().edit().remove("calX").remove("calY").apply();
-            Toast.makeText(this, "Tilt center reset to flat", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Centro: teléfono plano sobre la mesa", Toast.LENGTH_SHORT).show();
             return true;
         });
-        row2.addView(camBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        row2.addView(center, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        root.addView(row2);
+        rowB.addView(addG, weight());
+        rowB.addView(center, weight());
+        root.addView(rowB);
 
-        LinearLayout row3 = new LinearLayout(this);
-        Button add = new Button(this);
-        add.setText("+ Add mapping");
-        add.setOnClickListener(v -> {
-            int used = 29;
-            for (Mapping m : maps) if (m.type == Mapping.CC) used = Math.max(used, m.number);
-            maps.add(new Mapping(0, Mapping.CC, Math.min(127, used + 1), 1.0f, true));
-            saveMaps();
-            rebuild();
-            applyNeeds();
-        });
+        TextView tip = new TextView(this);
+        tip.setText("Sostén el teléfono como lo vas a tocar y pulsa «Centrar inclinación». "
+                + "Mantén pulsado para volver a «plano sobre la mesa».");
+        tip.setTextSize(12);
+        tip.setTextColor(0xFF8A8AA0);
+        tip.setPadding(dp(4), dp(4), dp(4), 0);
+        root.addView(tip);
+
         Button panic = new Button(this);
-        panic.setText("Panic (notes off)");
+        panic.setText("Pánico (cortar notas colgadas)");
         panic.setOnClickListener(v -> panic());
-        row3.addView(add, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        row3.addView(panic, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        root.addView(row3);
+        root.addView(panic);
+
+        // ---- advanced
+        advToggle = new Button(this);
+        advToggle.setAllCaps(false);
+        advToggle.setOnClickListener(v -> {
+            boolean show = advBox.getVisibility() != View.VISIBLE;
+            advBox.setVisibility(show ? View.VISIBLE : View.GONE);
+            advToggle.setText(show ? "Ajustes avanzados ▴" : "Ajustes avanzados ▾");
+        });
+        advToggle.setText("Ajustes avanzados ▾");
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        alp.topMargin = dp(18);
+        root.addView(advToggle, alp);
+
+        advBox = new LinearLayout(this);
+        advBox.setOrientation(LinearLayout.VERTICAL);
+        advBox.setVisibility(View.GONE);
+        root.addView(advBox);
+
+        status = new TextView(this);
+        status.setTextSize(12);
+        status.setTextColor(0xFFB8B8C8);
+        status.setPadding(0, dp(6), 0, dp(10));
+        advBox.addView(status);
+
+        LinearLayout row1 = new LinearLayout(this);
+        btBtn = new Button(this);
+        btBtn.setAllCaps(false);
+        btBtn.setOnClickListener(v -> toggleBle());
+        camBtn = new Button(this);
+        camBtn.setAllCaps(false);
+        camBtn.setOnClickListener(v -> {
+            camFront = !camFront;
+            changed();
+            updateStatus();
+        });
+        row1.addView(btBtn, weight());
+        row1.addView(camBtn, weight());
+        advBox.addView(row1);
+
+        TextView btHelp = new TextView(this);
+        btHelp.setText("«Visible por Bluetooth» es para Ableton / computadora: el teléfono aparece "
+                + "como dispositivo MIDI. Para el FM-1 déjalo apagado y usa «Conectar FM-1 / USB».");
+        btHelp.setTextSize(12);
+        btHelp.setTextColor(0xFF8A8AA0);
+        btHelp.setPadding(dp(4), dp(2), dp(4), dp(6));
+        advBox.addView(btHelp);
 
         passBtn = new Button(this);
+        passBtn.setAllCaps(false);
         passBtn.setOnClickListener(v -> {
             boolean on = !prefs().getBoolean("micPass", false);
             prefs().edit().putBoolean("micPass", on).apply();
             if (on) Toast.makeText(this,
-                    "Mic goes to the audio output. Use headphones / USB audio to avoid feedback.",
+                    "El micrófono sale por la salida de audio. Usa audífonos o cable para evitar acople.",
                     Toast.LENGTH_LONG).show();
             applyNeeds();
             updateStatus();
         });
-        root.addView(passBtn);
+        advBox.addView(passBtn);
 
+        advBox.addView(label("EDITOR DE MAPEOS"));
         listBox = new LinearLayout(this);
         listBox.setOrientation(LinearLayout.VERTICAL);
-        listBox.setPadding(0, dp(10), 0, 0);
-        root.addView(listBox);
+        advBox.addView(listBox);
 
         Button reset = new Button(this);
-        reset.setText("Reset all mappings to defaults");
+        reset.setText("Restaurar escena «Expresivo»");
         reset.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle("Reset all mappings?")
-                .setMessage("Your current mappings will be replaced by the defaults.")
-                .setPositiveButton("Reset", (d, w) -> {
-                    solo = null;
-                    defaults();
-                    saveMaps();
-                    rebuild();
-                    applyNeeds();
-                    updateStatus();
-                })
-                .setNegativeButton("Cancel", null)
+                .setTitle("¿Restaurar?")
+                .setMessage("Tus gestos actuales se reemplazan por la escena Expresivo.")
+                .setPositiveButton("Restaurar", (d, w) -> applyScene(0))
+                .setNegativeButton("Cancelar", null)
                 .show());
-        root.addView(reset);
+        advBox.addView(reset);
 
         setContentView(sv);
         rebuild();
     }
 
+    private void testNote() {
+        if (hub.outs.isEmpty() && !hub.ble.running) {
+            Toast.makeText(this, "Primero conecta el FM-1 (botón «Conectar»).", Toast.LENGTH_SHORT).show();
+        }
+        hub.send(new byte[]{(byte) 0x90, 60, 100});
+        ui.postDelayed(() -> hub.send(new byte[]{(byte) 0x80, 60, 0}), 500);
+    }
+
+    private String destName(Mapping m) {
+        if (m.type == Mapping.PB) return DEST_NAMES[0];
+        if (m.type == Mapping.NOTE) return "Nota " + noteName(m.number);
+        for (int i = 0; i < DEST_NUM.length; i++) {
+            if (DEST_TYPE[i] == Mapping.CC && DEST_NUM[i] == m.number) return DEST_NAMES[i];
+        }
+        return "CC " + m.number;
+    }
+
+    private void chooseDest(final Mapping m) {
+        new AlertDialog.Builder(this)
+                .setTitle(GESTURES[m.source] + " controla…")
+                .setItems(DEST_NAMES, (d, i) -> {
+                    if (i == DEST_NAMES.length - 1) {
+                        advBox.setVisibility(View.VISIBLE);
+                        advToggle.setText("Ajustes avanzados ▴");
+                        Toast.makeText(this, "Edita el número de CC en el editor de mapeos.",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    releaseHeldNotes();
+                    m.type = DEST_TYPE[i];
+                    m.number = DEST_NUM[i];
+                    m.lastSent = -1;
+                    changed();
+                    rebuild();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void addGesture() {
+        new AlertDialog.Builder(this)
+                .setTitle("Elige un gesto")
+                .setItems(GESTURES, (d, src) -> {
+                    float sens = SensorEngine.GAIN_MODE[src] == 2 ? 1f
+                            : (SensorEngine.GAIN_MODE[src] == 0 ? 2f : 1.2f);
+                    Mapping m = mk(src, Mapping.CC, 74, sens, 0.3f);
+                    maps.add(m);
+                    changed();
+                    rebuild();
+                    chooseDest(m);
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private View buildPlayRow(final Mapping m) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xFF1E1E26);
+        bg.setCornerRadius(dp(12));
+        card.setBackground(bg);
+        card.setPadding(dp(12), dp(10), dp(12), dp(12));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.bottomMargin = dp(10);
+        card.setLayoutParams(clp);
+
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        CheckBox cb = new CheckBox(this);
+        cb.setChecked(m.enabled);
+        cb.setOnCheckedChangeListener((b, c) -> {
+            m.enabled = c;
+            m.lastSent = -1;
+            changed();
+        });
+        LinearLayout txt = new LinearLayout(this);
+        txt.setOrientation(LinearLayout.VERTICAL);
+        txt.setOnClickListener(v -> chooseDest(m));
+        TextView g = new TextView(this);
+        g.setText(GESTURES[m.source]);
+        g.setTextSize(16);
+        g.setTextColor(0xFFFFFFFF);
+        TextView d = new TextView(this);
+        d.setText("→ " + destName(m) + "  ✎");
+        d.setTextSize(15);
+        d.setTextColor(0xFF7CE0B0);
+        txt.addView(g);
+        txt.addView(d);
+        Button del = new Button(this);
+        del.setText("✕");
+        del.setMinWidth(0);
+        del.setMinimumWidth(0);
+        del.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("¿Quitar este gesto?")
+                .setMessage(GESTURES[m.source] + " → " + destName(m))
+                .setPositiveButton("Quitar", (dd, w) -> {
+                    releaseHeldNotes();
+                    maps.remove(m);
+                    saveMaps();
+                    rebuild();
+                    applyNeeds();
+                    updateStatus();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show());
+        top.addView(cb);
+        top.addView(txt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        top.addView(del);
+        card.addView(top);
+
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(1000);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(10));
+        blp.topMargin = dp(10);
+        card.addView(bar, blp);
+
+        TextView live = new TextView(this);
+        live.setTextSize(12);
+        live.setTextColor(0xFF8FD3A8);
+        live.setPadding(0, dp(4), 0, 0);
+        live.setText(friendlyLive(m));
+        card.addView(live);
+
+        if (m.type != Mapping.NOTE) {
+            LinearLayout sr = new LinearLayout(this);
+            int near = 0;
+            double best = 1e9;
+            for (int i = 0; i < SENS_LEVELS.length; i++) {
+                double diff = Math.abs(Math.log(m.sens / SENS_LEVELS[i]));
+                if (diff < best) { best = diff; near = i; }
+            }
+            for (int i = 0; i < SENS_LEVELS.length; i++) {
+                final float lv = SENS_LEVELS[i];
+                Button sb = new Button(this);
+                sb.setAllCaps(false);
+                sb.setText(SENS_NAMES[i]);
+                sb.setTextColor(i == near ? 0xFF7CE0B0 : 0xFFB8B8C8);
+                sb.setOnClickListener(v -> {
+                    m.sens = lv;
+                    saveMaps();
+                    rebuild();
+                });
+                sr.addView(sb, weight());
+            }
+            card.addView(sr);
+        }
+
+        playMaps.add(m);
+        playBars.add(bar);
+        playLabels.add(live);
+        return card;
+    }
+
+    private String friendlyLive(Mapping m) {
+        if (!m.enabled) return "apagado";
+        if (m.type == Mapping.NOTE) return m.above ? "● ¡toque!" : "esperando…";
+        int v = Math.max(0, m.lastSent);
+        if (m.type == Mapping.PB) {
+            return Math.round((v - 8192) / 81.92f) + "%";
+        }
+        return Math.round(v / 1.27f) + "%";
+    }
+
     private void rebuild() {
         listBox.removeAllViews();
+        playBox.removeAllViews();
         bars.clear();
         barMaps.clear();
         barLabels.clear();
-        for (Mapping m : maps) listBox.addView(buildRow(m));
+        playMaps.clear();
+        playBars.clear();
+        playLabels.clear();
+        for (Mapping m : maps) {
+            playBox.addView(buildPlayRow(m));
+            listBox.addView(buildRow(m));
+        }
+        if (maps.isEmpty()) {
+            TextView e = new TextView(this);
+            e.setText("Sin gestos. Elige una escena o pulsa «+ Añadir gesto».");
+            e.setTextColor(0xFFB8B8C8);
+            playBox.addView(e);
+        }
     }
 
     private Spinner spinner(String[] items, int sel, final IntConsumer cb) {
@@ -535,7 +875,7 @@ public class MainActivity extends Activity {
             m.lastSent = -1;
             changed();
         });
-        Spinner src = spinner(SensorEngine.NAMES, m.source, pos -> {
+        Spinner src = spinner(GESTURES, m.source, pos -> {
             if (pos == m.source) return;
             m.source = pos;
             m.lastSent = -1;
@@ -544,9 +884,9 @@ public class MainActivity extends Activity {
         Button del = new Button(this);
         del.setText("✕");
         del.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle("Delete this mapping?")
-                .setMessage(SensorEngine.NAMES[m.source])
-                .setPositiveButton("Delete", (d, w) -> {
+                .setTitle("¿Quitar este mapeo?")
+                .setMessage(GESTURES[m.source])
+                .setPositiveButton("Quitar", (d, w) -> {
                     if (solo == m) solo = null;
                     maps.remove(m);
                     saveMaps();
@@ -554,7 +894,7 @@ public class MainActivity extends Activity {
                     applyNeeds();
                     updateStatus();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("Cancelar", null)
                 .show());
         Button soloBtn = new Button(this);
         soloBtn.setText(solo == m ? "SOLO" : "Solo");
@@ -593,28 +933,28 @@ public class MainActivity extends Activity {
         card.addView(r2);
 
         if (m.type == Mapping.CC) {
-            slider(card, "CC number", 0, 127, m.number, n -> "" + n, n -> {
+            slider(card, "Número de CC", 0, 127, m.number, n -> "" + n, n -> {
                 m.number = n;
                 m.lastSent = -1;
             });
         } else if (m.type == Mapping.NOTE) {
-            slider(card, "Note", 0, 127, m.number, MainActivity::noteName, n -> m.number = n);
+            slider(card, "Nota", 0, 127, m.number, MainActivity::noteName, n -> m.number = n);
         }
 
         int sensP = Math.round(100f * (float) (Math.log(m.sens / 0.25f) / Math.log(32.0)));
-        slider(card, "Sensitivity", 0, 100, Math.max(0, Math.min(100, sensP)),
+        slider(card, "Sensibilidad", 0, 100, Math.max(0, Math.min(100, sensP)),
                 p -> String.format("%.1fx", 0.25f * Math.pow(32.0, p / 100.0)),
                 p -> m.sens = (float) (0.25 * Math.pow(32.0, p / 100.0)));
 
         if (m.type != Mapping.NOTE) {
-            slider(card, "Smoothing", 0, 95, Math.round(m.smooth * 100f), p -> p + "%",
+            slider(card, "Suavizado", 0, 95, Math.round(m.smooth * 100f), p -> p + "%",
                     p -> m.smooth = p / 100f);
-            slider(card, "Output min", 0, 127, Math.round(m.outMin), p -> "" + p,
+            slider(card, "Salida mínima", 0, 127, Math.round(m.outMin), p -> "" + p,
                     p -> m.outMin = p);
-            slider(card, "Output max", 0, 127, Math.round(m.outMax), p -> "" + p,
+            slider(card, "Salida máxima", 0, 127, Math.round(m.outMax), p -> "" + p,
                     p -> m.outMax = p);
         } else {
-            slider(card, "Trigger threshold", 5, 95, Math.round(m.threshold * 100f), p -> p + "%",
+            slider(card, "Umbral de disparo", 5, 95, Math.round(m.threshold * 100f), p -> p + "%",
                     p -> m.threshold = p / 100f);
         }
 
@@ -651,22 +991,38 @@ public class MainActivity extends Activity {
 
     private void updateStatus() {
         if (status == null) return;
-        StringBuilder sb = new StringBuilder();
-        sb.append("Bluetooth MIDI (for Ableton / DAW): ").append(hub.ble.status);
-        if (hub.outs.isEmpty()) {
-            sb.append("\nDirect output: none (use 'Connect synth / USB')");
+        if (!hub.outs.isEmpty()) {
+            connLine.setText("● Conectado: " + hub.outs.get(0).name);
+            connLine.setTextColor(0xFF7CE0B0);
+        } else if (hub.ble.running) {
+            connLine.setText("◐ Visible como dispositivo MIDI (modo computadora)");
+            connLine.setTextColor(0xFFFFB020);
         } else {
-            for (MidiHub.Out o : hub.outs) sb.append("\nDirect output → ").append(o.name);
+            connLine.setText("○ Sin conectar — pulsa «Conectar FM-1 / USB»");
+            connLine.setTextColor(0xFFFF8A80);
+        }
+        int sc = prefs().getInt("scene", 0);
+        for (int i = 0; i < sceneBtns.size(); i++) {
+            sceneBtns.get(i).setText(SCENES[i]);
+            sceneBtns.get(i).setTextColor(i == sc ? 0xFF7CE0B0 : 0xFFFFFFFF);
+        }
+        sceneHelp.setText(sc >= 0 && sc < SCENE_HELP.length ? SCENE_HELP[sc] : "");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Bluetooth MIDI (modo computadora): ").append(hub.ble.status);
+        if (hub.outs.isEmpty()) {
+            sb.append("\nSalida directa: ninguna");
+        } else {
+            for (MidiHub.Out o : hub.outs) sb.append("\nSalida directa → ").append(o.name);
         }
         if (solo != null) {
-            sb.append("\nSOLO: only '").append(SensorEngine.NAMES[solo.source])
-                    .append("' is sending — use this for MIDI learn, tap Solo again to release");
+            sb.append("\nSOLO: solo '").append(GESTURES[solo.source]).append("' envía MIDI");
         }
         status.setText(sb.toString());
-        btBtn.setText(hub.ble.running ? "Bluetooth: ON" : "Bluetooth: OFF");
-        camBtn.setText(camFront ? "Camera: front" : "Camera: back");
+        btBtn.setText(hub.ble.running ? "Visible por Bluetooth: SÍ" : "Visible por Bluetooth: NO");
+        camBtn.setText(camFront ? "Cámara: frontal" : "Cámara: trasera");
         passBtn.setText(prefs().getBoolean("micPass", false)
-                ? "Mic → audio output: ON" : "Mic → audio output: OFF");
+                ? "Micrófono → salida de audio: SÍ" : "Micrófono → salida de audio: NO");
     }
 
     // ------------------------------------------------------------ connect dialog
@@ -677,11 +1033,11 @@ public class MainActivity extends Activity {
         final ArrayList<Runnable> acts = new ArrayList<>();
 
         for (final MidiHub.Out o : hub.outs) {
-            labels.add("✕ Disconnect " + o.name);
+            labels.add("✕ Desconectar " + o.name);
             acts.add(() -> hub.close(o));
         }
         for (final MidiDeviceInfo i : hub.listDevices()) {
-            labels.add("USB / system: " + MidiHub.nameOf(i));
+            labels.add("USB / sistema: " + MidiHub.nameOf(i));
             acts.add(() -> hub.openInfo(i));
         }
         final int fixed = labels.size();
@@ -692,9 +1048,9 @@ public class MainActivity extends Activity {
         lv.setAdapter(ad);
 
         final AlertDialog dlg = new AlertDialog.Builder(this)
-                .setTitle("Tap a device (scanning Bluetooth…)")
+                .setTitle("Elige tu FM-1 o dispositivo (buscando Bluetooth…)")
                 .setView(lv)
-                .setNegativeButton("Close", null)
+                .setNegativeButton("Cerrar", null)
                 .create();
         lv.setOnItemClickListener((p, v, pos, id) -> {
             acts.get(pos).run();
@@ -749,7 +1105,7 @@ public class MainActivity extends Activity {
         });
         dlg.show();
         if (!scanning) {
-            dlg.setTitle("Bluetooth scan unavailable (permission/Bluetooth off)");
+            dlg.setTitle("No se puede buscar Bluetooth (falta permiso o está apagado)");
         }
     }
 }
