@@ -46,7 +46,10 @@ Or open the folder in Android Studio and press Run.
 `web/manos.html` does the hand tracking with the computer's webcam and GPU and sends MIDI
 straight to the synth (FM-1 over USB-C). Download `manos.html` from the latest release, open
 it in Chrome or Edge, press **Empezar** and allow camera + MIDI. Modes: Mano Pro, Acordes,
-Arpa de aire, Theremin, Omnichord (left hand picks chords, right hand strums a string plate),
+Arpa de aire, Theremin, Omnichord (21 chord buttons in the circle of fifths with switchable rows
+— classic M/m/7, jazz, colour, soul —, latch or hold, pad, strumplate with sustain, rhythm machine
+with 10 styles and sync start, auto bass, chord stabs, arpeggiator, auto-strum, one MIDI channel
+per part),
 Hexágonos (isomorphic hex keyboard: harmonic table, Wicki-Hayden or scale-only; each hand is a
 voice, thumb+middle plays the triad) and Expresión, plus style presets (Blues, Flamenco, Árabe,
 Koto, Arpa celta, Pad ambient, Theremin clásico...). Nothing to install; it needs internet the first time to
