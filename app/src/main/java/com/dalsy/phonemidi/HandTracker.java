@@ -32,7 +32,7 @@ public class HandTracker {
             {9, 13}, {13, 14}, {14, 15}, {15, 16},
             {13, 17}, {17, 18}, {18, 19}, {19, 20}, {0, 17}};
 
-    private static final int OUT = 192;
+    private static final int OUT = 256;
 
     private final Context ctx;
     private final SensorEngine eng;
@@ -47,9 +47,9 @@ public class HandTracker {
     private volatile int fw = OUT, fh = OUT;
     private long lastTs = 0, lastSeen = 0, sentAt = 0;
 
-    private final OneEuro fx = new OneEuro(1.5f, 8f), fy = new OneEuro(1.5f, 8f);
-    private final OneEuro froll = new OneEuro(1.0f, 0.05f), fopen = new OneEuro(1.0f, 2f);
-    private final OneEuro f2y = new OneEuro(1.5f, 8f), f2open = new OneEuro(1.0f, 2f);
+    private final OneEuro fx = new OneEuro(4f, 10f), fy = new OneEuro(4f, 10f);
+    private final OneEuro froll = new OneEuro(3f, 0.08f), fopen = new OneEuro(3f, 3f);
+    private final OneEuro f2y = new OneEuro(4f, 10f), f2open = new OneEuro(3f, 3f);
     private int fingerCand = -1, fingerCandN = 0;
 
     public HandTracker(Context c, SensorEngine e) {
@@ -67,33 +67,61 @@ public class HandTracker {
         new Thread(this::init, "pm-hands-init").start();
     }
 
+    private volatile boolean gpu = false;
+
     private void init() {
-        try {
-            BaseOptions base = BaseOptions.builder()
-                    .setModelAssetPath("hand_landmarker.task")
-                    .setDelegate(Delegate.CPU)
-                    .build();
-            HandLandmarker.HandLandmarkerOptions o = HandLandmarker.HandLandmarkerOptions.builder()
-                    .setBaseOptions(base)
-                    .setRunningMode(RunningMode.LIVE_STREAM)
-                    .setNumHands(2)
-                    .setMinHandDetectionConfidence(0.5f)
-                    .setMinHandPresenceConfidence(0.5f)
-                    .setMinTrackingConfidence(0.5f)
-                    .setResultListener(this::onResult)
-                    .setErrorListener(err -> {
-                        busy = false;
-                        status = "Error del detector: " + err.getMessage();
-                    })
-                    .build();
-            lm = HandLandmarker.createFromOptions(ctx, o);
-            status = "Muestra la mano a la cámara";
-        } catch (Throwable t) {
-            status = "Detector de manos no disponible: " + t.getMessage();
-            synchronized (this) {
-                initStarted = false;
+        String err = "";
+        for (Delegate d : new Delegate[]{Delegate.GPU, Delegate.CPU}) {
+            try {
+                lm = create(d);
+                gpu = d == Delegate.GPU;
+                status = "Muestra la mano a la cámara";
+                return;
+            } catch (Throwable t) {
+                err = String.valueOf(t.getMessage());
             }
         }
+        status = "Detector de manos no disponible: " + err;
+        synchronized (this) {
+            initStarted = false;
+        }
+    }
+
+    private HandLandmarker create(Delegate d) {
+        BaseOptions base = BaseOptions.builder()
+                .setModelAssetPath("hand_landmarker.task")
+                .setDelegate(d)
+                .build();
+        HandLandmarker.HandLandmarkerOptions o = HandLandmarker.HandLandmarkerOptions.builder()
+                .setBaseOptions(base)
+                .setRunningMode(RunningMode.LIVE_STREAM)
+                .setNumHands(2)
+                .setMinHandDetectionConfidence(0.5f)
+                .setMinHandPresenceConfidence(0.5f)
+                .setMinTrackingConfidence(0.5f)
+                .setResultListener(this::onResult)
+                .setErrorListener(e -> {
+                    busy = false;
+                    status = "Error del detector: " + e.getMessage();
+                    if (gpu) fallbackToCpu();
+                })
+                .build();
+        return HandLandmarker.createFromOptions(ctx, o);
+    }
+
+    private void fallbackToCpu() {
+        gpu = false;
+        new Thread(() -> {
+            HandLandmarker old = lm;
+            lm = null;
+            try { if (old != null) old.close(); } catch (Throwable ignored) { }
+            try {
+                lm = create(Delegate.CPU);
+                status = "Muestra la mano a la cámara";
+            } catch (Throwable t) {
+                status = "Detector de manos no disponible: " + t.getMessage();
+            }
+        }, "pm-hands-cpu").start();
     }
 
     // ------------------------------------------------------------ frames (camera thread)

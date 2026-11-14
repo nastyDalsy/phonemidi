@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoneMIDI Manos</title>
+<style>
+  :root {
+    --bg: #0e0e12; --panel: #17171e; --card: #1e1e27; --line: #2c2c38;
+    --text: #f2f2f6; --muted: #9a9ab0; --accent: #7ce0b0; --accent-d: #2d5a47;
+    --warn: #ffb020; --bad: #ff8a80; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px;
+    border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  .chip { font-size: 13px; color: var(--muted); background: var(--card); border: 1px solid var(--line);
+    padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+  .chip.ok { color: var(--accent); border-color: var(--accent-d); }
+  .chip.bad { color: var(--bad); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .stage { position: relative; background: #000; border-radius: var(--radius); overflow: hidden;
+    aspect-ratio: 16 / 9; }
+  canvas#view { width: 100%; height: 100%; display: block; }
+  .hud { position: absolute; left: 12px; top: 10px; font: 12px ui-monospace, monospace; color: #fff;
+    background: rgba(0,0,0,.45); padding: 3px 8px; border-radius: 6px; }
+  .bignote { position: absolute; right: 14px; top: 8px; font-size: 44px; font-weight: 700;
+    text-shadow: 0 2px 10px rgba(0,0,0,.7); color: var(--muted); }
+  .bignote.on { color: var(--accent); }
+  .start { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10,10,14,.92);
+    text-align: center; padding: 16px; }
+  .start p { color: var(--muted); max-width: 520px; margin: 10px auto 18px; }
+  button { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: #0b2a1d; border: 0; font-weight: 650; padding: 12px 22px; font-size: 17px; }
+  aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .card h2 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    margin: 0 0 8px; font-weight: 600; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 3px; }
+  select, input[type=number] { width: 100%; font: inherit; color: var(--text); background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; min-width: 0; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .modes button { text-align: left; padding: 8px 10px; }
+  .modes button.sel { border-color: var(--accent); color: var(--accent); background: #1d2a25; }
+  .help { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; margin: 8px 0 0; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .ccline { display: grid; grid-template-columns: auto 1fr 74px; gap: 8px; align-items: center; margin-top: 6px; font-size: 14px; }
+  .ccline input[type=number] { padding: 4px 6px; }
+  .tip { color: var(--muted); font-size: 13px; padding: 0 16px 20px; }
+  .tip b { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PhoneMIDI · Manos</h1>
+  <span class="chip" id="chipCam">Cámara: —</span>
+  <span class="chip" id="chipDet">Detector: —</span>
+  <span class="chip" id="chipMidi">MIDI: —</span>
+</header>
+
+<main>
+  <section>
+    <div class="stage" id="stage">
+      <canvas id="view"></canvas>
+      <div class="hud" id="hud"></div>
+      <div class="bignote" id="bignote"></div>
+      <div class="start" id="start">
+        <div>
+          <h2 style="margin:0;font-size:22px">Toca con las manos frente a la webcam</h2>
+          <p>Conecta el FM-1 al ordenador con un cable USB-C y abre esta página en Chrome o Edge.
+            Al empezar, el navegador te pedirá permiso para la cámara y para MIDI.</p>
+          <button class="primary" id="go">Empezar</button>
+          <p id="startErr" style="color:var(--bad)"></p>
+        </div>
+      </div>
+    </div>
+    <p class="help" id="modeHelp"></p>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>Salida MIDI</h2>
+      <select id="out"></select>
+      <div class="row" style="margin-top:8px">
+        <div><label for="ch">Canal</label><select id="ch"></select></div>
+        <div><label for="vel">Fuerza (velocity)</label><input type="range" id="vel" min="20" max="127" value="100"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="test">♪ Probar nota</button>
+        <button id="panic">Pánico</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Modo</h2>
+      <div class="modes" id="modes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Notas</h2>
+      <div class="row">
+        <div><label for="scale">Escala</label><select id="scale"></select></div>
+        <div><label for="root">Tono</label><select id="root"></select></div>
+      </div>
+      <div class="row">
+        <div><label for="reg">Registro</label><select id="reg"></select></div>
+        <div><label for="oct">Octavas</label><select id="oct"></select></div>
+      </div>
+      <label for="hand">Mano que toca</label>
+      <select id="hand"><option value="right">Derecha (la de la derecha de la pantalla)</option><option value="left">Izquierda</option></select>
+    </div>
+
+    <div class="card">
+      <h2>Respuesta</h2>
+      <label for="smooth">Suavizado: <span id="smoothV"></span></label>
+      <input type="range" id="smooth" min="0" max="100" value="25">
+      <label for="pinch">Pinza: <span id="pinchV"></span></label>
+      <input type="range" id="pinch" min="20" max="60" value="35">
+      <label for="width">Ancho de la zona de notas: <span id="widthV"></span></label>
+      <input type="range" id="width" min="40" max="100" value="76">
+    </div>
+
+    <div class="card">
+      <h2>Expresión</h2>
+      <label class="check"><input type="checkbox" id="bendOn" checked> Girar la muñeca dobla la nota (pitch bend)</label>
+      <label for="bendDeg">Giro para doblar al máximo: <span id="bendDegV"></span></label>
+      <input type="range" id="bendDeg" min="15" max="80" value="45">
+      <div class="ccline"><input type="checkbox" id="ccAOn" checked><span>Brillo (abrir mano / altura)</span><input type="number" id="ccA" min="0" max="127" value="74" title="Número de CC"></div>
+      <div class="ccline"><input type="checkbox" id="ccBOn" checked><span>Vibrato (otra mano: altura)</span><input type="number" id="ccB" min="0" max="127" value="1" title="Número de CC"></div>
+      <p class="help">Los números son el CC que se envía. Si tu sintetizador no responde, cambia el número.</p>
+    </div>
+  </aside>
+</main>
+<p class="tip"><b>Consejos:</b> buena luz de frente, la mano a 40–80 cm de la cámara, fondo sin otras manos.
+  Si el detector muestra “CPU”, cierra otras pestañas o activa la aceleración por hardware del navegador.</p>
+
+<script type="module">
+const params = new URLSearchParams(location.search);
+const MP = params.get('mp') || 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+const MODEL = params.get('model') ||
+  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+
+// ---------------------------------------------------------------- music data
+const SCALES = [
+  ['Pentatónica mayor', [0, 2, 4, 7, 9]], ['Pentatónica menor', [0, 3, 5, 7, 10]],
+  ['Mayor', [0, 2, 4, 5, 7, 9, 11]], ['Menor natural', [0, 2, 3, 5, 7, 8, 10]],
+  ['Dórica', [0, 2, 3, 5, 7, 9, 10]], ['Frigia', [0, 1, 3, 5, 7, 8, 10]],
+  ['Menor armónica', [0, 2, 3, 5, 7, 8, 11]], ['Blues', [0, 3, 5, 6, 7, 10]],
+  ['Tonos enteros', [0, 2, 4, 6, 8, 10]], ['Cromática', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]];
+const ROOTS = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+const REGS = [['Grave', 36], ['Medio', 48], ['Agudo', 60], ['Muy agudo', 72]];
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+const MODES = {
+  pro: ['Mano Pro', 'Mueve la mano a los lados para elegir la nota y junta pulgar e índice (pinza) para tocarla. Con la pinza cerrada, desliza para ligar notas. Gira la muñeca para doblar. Abre la mano para más brillo; sube la otra mano para vibrato.'],
+  chords: ['Acordes', 'Levanta 1 a 5 dedos: acordes I a V de la escala. El puño calla. Sube o baja la mano para el brillo; la otra mano da vibrato.'],
+  harp: ['Arpa de aire', 'Pasa la mano de lado a lado: cada franja suena una nota. Más rápido = más fuerte. Gira la muñeca para doblar.'],
+  theremin: ['Theremin', 'Mientras se vea la mano suena una nota que sigue su posición (dentro de la escala). La altura da brillo, la otra mano vibrato. Cierra el puño para callar.'],
+  expr: ['Expresión', 'Sin notas: tú tocas el sintetizador y la mano lo moldea. Girar la muñeca dobla, abrir la mano da brillo, la altura da vibrato.'],
+};
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : (x > 1 ? 1 : x);
+const noteName = (n) => n < 0 ? '–' : ROOTS[n % 12] + (Math.floor(n / 12) - 1);
+
+// ---------------------------------------------------------------- settings
+const S = { mode: 'pro', out: 'all', ch: 0, vel: 100, scale: 0, root: 0, reg: 1, oct: 2, hand: 'right',
+  smooth: 25, pinch: 35, width: 76, bendOn: true, bendDeg: 45, ccAOn: true, ccA: 74, ccBOn: true, ccB: 1 };
+try { Object.assign(S, JSON.parse(localStorage.getItem('pm-manos') || '{}')); } catch (e) { /* private mode */ }
+const save = () => { try { localStorage.setItem('pm-manos', JSON.stringify(S)); } catch (e) { /* ignore */ } };
+
+function fill(sel, items, val) {
+  sel.innerHTML = '';
+  items.forEach(([label, v]) => { const o = document.createElement('option'); o.textContent = label; o.value = v; sel.appendChild(o); });
+  sel.value = String(val);
+}
+fill($('ch'), Array.from({ length: 16 }, (_, i) => ['Canal ' + (i + 1), i]), S.ch);
+fill($('scale'), SCALES.map((s, i) => [s[0], i]), S.scale);
+fill($('root'), ROOTS.map((r, i) => [r, i]), S.root);
+fill($('reg'), REGS.map((r, i) => [r[0], i]), S.reg);
+fill($('oct'), [1, 2, 3, 4].map((o) => [String(o), o]), S.oct);
+$('hand').value = S.hand;
+for (const k of ['vel', 'smooth', 'pinch', 'width', 'bendDeg', 'ccA', 'ccB']) $(k).value = S[k];
+for (const k of ['bendOn', 'ccAOn', 'ccBOn']) $(k).checked = S[k];
+
+function labels() {
+  $('smoothV').textContent = S.smooth < 15 ? 'mínimo (más rápido)' : (S.smooth > 60 ? 'alto (más estable)' : 'medio');
+  $('pinchV').textContent = S.pinch < 30 ? 'hay que juntar mucho' : (S.pinch > 45 ? 'muy sensible' : 'normal');
+  $('widthV').textContent = S.width + '% de la imagen';
+  $('bendDegV').textContent = S.bendDeg + '°';
+}
+labels();
+
+const modesEl = $('modes');
+for (const [k, [name]] of Object.entries(MODES)) {
+  const b = document.createElement('button');
+  b.textContent = name; b.dataset.mode = k;
+  b.onclick = () => {
+    allOff(); S.mode = k;
+    // chords need a 7-note scale to make real triads
+    if (k === 'chords' && SCALES[S.scale][1].length !== 7) { S.scale = 2; $('scale').value = '2'; }
+    if (k === 'chords' && S.oct > 1) { S.oct = 1; $('oct').value = '1'; }
+    save(); showMode();
+  };
+  modesEl.appendChild(b);
+}
+function showMode() {
+  for (const b of modesEl.children) b.classList.toggle('sel', b.dataset.mode === S.mode);
+  $('modeHelp').textContent = MODES[S.mode][1];
+}
+showMode();
+
+function bind(id, num) {
+  $(id).addEventListener('input', (e) => {
+    const el = e.target;
+    S[id] = el.type === 'checkbox' ? el.checked : (num ? Number(el.value) : el.value);
+    if (['scale', 'root', 'reg', 'oct', 'ch', 'out'].includes(id)) allOff();
+    labels(); save();
+  });
+}
+['ch', 'vel', 'scale', 'root', 'reg', 'oct', 'smooth', 'pinch', 'width', 'bendDeg', 'ccA', 'ccB'].forEach((k) => bind(k, true));
+['out', 'hand', 'bendOn', 'ccAOn', 'ccBOn'].forEach((k) => bind(k, false));
+
+// ---------------------------------------------------------------- MIDI
+let midi = null;
+function outputs() {
+  if (!midi) return [];
+  const all = [...midi.outputs.values()];
+  return S.out === 'all' ? all : all.filter((o) => o.id === S.out);
+}
+function send(bytes) { for (const o of outputs()) { try { o.send(bytes); } catch (e) { /* unplugged */ } } }
+function listOutputs() {
+  const sel = $('out');
+  const outs = midi ? [...midi.outputs.values()] : [];
+  const items = [['Todas las salidas', 'all'], ...outs.map((o) => [o.name, o.id])];
+  fill(sel, items, items.some((i) => i[1] === S.out) ? S.out : 'all');
+  const chip = $('chipMidi');
+  if (!midi) { chip.textContent = 'MIDI: sin permiso'; chip.className = 'chip bad'; return; }
+  chip.textContent = outs.length ? 'MIDI: ' + outs.map((o) => o.name).join(', ') : 'MIDI: conecta el sintetizador';
+  chip.className = 'chip ' + (outs.length ? 'ok' : 'bad');
+}
+async function initMidi() {
+  try {
+    midi = await navigator.requestMIDIAccess({ sysex: false });
+    midi.onstatechange = listOutputs;
+  } catch (e) { midi = null; }
+  listOutputs();
+}
+$('test').onclick = () => { const n = 60; send([0x90 | S.ch, n, S.vel]); setTimeout(() => send([0x80 | S.ch, n, 0]), 400); };
+$('panic').onclick = () => { allOff(); for (let c = 0; c < 16; c++) { send([0xB0 | c, 123, 0]); send([0xB0 | c, 120, 0]); send([0xE0 | c, 0, 64]); } };
+
+// ---------------------------------------------------------------- note player
+const P = { sounding: [], deg: -1, gate: false, shown: -1, lastCC: {}, lastPB: -1, pinchOn: false,
+  fingers: 0, fCand: -1, fCandN: 0, lastSeen: 0, harpPrev: -1 };
+const scale = () => SCALES[S.scale][1];
+const degrees = () => scale().length * S.oct;
+function noteFor(d) {
+  const sc = scale(), n = sc.length;
+  return Math.max(0, Math.min(127, REGS[S.reg][1] + S.root + Math.floor(d / n) * 12 + sc[((d % n) + n) % n]));
+}
+function setNotes(notes, vel) {
+  for (const o of P.sounding) if (!notes.includes(o)) send([0x80 | S.ch, o, 0]);
+  for (const n of notes) if (!P.sounding.includes(n)) send([0x90 | S.ch, n, vel]);
+  P.sounding = notes.slice();
+  if (notes.length) P.shown = notes[0];
+}
+function allOff() { setNotes([], 0); P.deg = -1; P.pinchOn = false; P.harpPrev = -1; }
+function pluck(n, vel) { send([0x90 | S.ch, n, vel]); P.shown = n; setTimeout(() => send([0x80 | S.ch, n, 0]), 260); P.plucked = performance.now(); }
+function cc(num, val) {
+  val = Math.round(clamp01(val) * 127);
+  if (P.lastCC[num] === val) return;
+  P.lastCC[num] = val; send([0xB0 | S.ch, num & 127, val]);
+}
+function bend(x) { // x in -1..1
+  const pb = Math.round(8192 + Math.max(-1, Math.min(1, x)) * 8191);
+  if (pb === P.lastPB) return;
+  P.lastPB = pb; send([0xE0 | S.ch, pb & 127, (pb >> 7) & 127]);
+}
+function quantize(pos) {
+  const n = degrees(), f = clamp01(pos) * n;
+  let d = P.deg;
+  if (d < 0 || d >= n || f < d - 0.15 || f > d + 1.15) d = Math.min(n - 1, Math.floor(f));
+  return d;
+}
+
+// ---------------------------------------------------------------- smoothing (One Euro)
+class OneEuro {
+  constructor(beta) { this.beta = beta; this.x = NaN; this.dx = 0; this.t = 0; }
+  a(cut, dt) { const tau = 1 / (2 * Math.PI * cut); return 1 / (1 + tau / dt); }
+  f(v, t) {
+    if (Number.isNaN(this.x)) { this.x = v; this.t = t; return v; }
+    const dt = Math.max(1e-3, t - this.t); this.t = t;
+    this.dx += this.a(1, dt) * ((v - this.x) / dt - this.dx);
+    const minCut = 0.5 + (1 - S.smooth / 100) * 9.5;
+    this.x += this.a(minCut + this.beta * Math.abs(this.dx), dt) * (v - this.x);
+    return this.x;
+  }
+}
+const F = { x: new OneEuro(6), y: new OneEuro(6), roll: new OneEuro(0.04), open: new OneEuro(2), y2: new OneEuro(6) };
+
+// ---------------------------------------------------------------- hand features
+let VW = 1280, VH = 720;
+const mx = (p) => 1 - p.x; // mirrored, like a mirror in front of you
+function dist(h, a, b) { const dx = (h[a].x - h[b].x) * VW, dy = (h[a].y - h[b].y) * VH; return Math.hypot(dx, dy); }
+function palm(h) {
+  const ids = [0, 5, 9, 13, 17];
+  return { x: ids.reduce((s, i) => s + mx(h[i]), 0) / 5, y: ids.reduce((s, i) => s + h[i].y, 0) / 5 };
+}
+function openness(h) { const s = Math.max(1, dist(h, 0, 9)); return (dist(h, 8, 0) + dist(h, 12, 0) + dist(h, 16, 0) + dist(h, 20, 0)) / 4 / s; }
+function countFingers(h) {
+  let c = 0;
+  for (const [tip, pip] of [[8, 6], [12, 10], [16, 14], [20, 18]]) if (dist(h, tip, 0) > dist(h, pip, 0) * 1.15) c++;
+  const s = Math.max(1, dist(h, 0, 9));
+  if (dist(h, 4, 5) / s > 0.6 && dist(h, 4, 17) > dist(h, 3, 17) * 1.05) c++;
+  return c;
+}
+function zoneX(x) { const w = S.width / 100, lo = 0.5 - w / 2; return clamp01((x - lo) / w); }
+
+let lastPalmX = null, lastT = 0, speed = 0;
+
+function processHands(hands, now) {
+  const t = now / 1000;
+  if (!hands.length) {
+    if (now - P.lastSeen > 150) { if (S.mode !== 'expr') setNotes([], 0); P.pinchOn = false; P.harpPrev = -1; lastPalmX = null; }
+    return null;
+  }
+  P.lastSeen = now;
+  hands.sort((a, b) => palm(b).x - palm(a).x); // right of the screen first
+  if (S.hand === 'left' && hands.length > 1) hands.reverse();
+  const h = hands[0], h2 = hands[1];
+  const size = Math.max(1, dist(h, 0, 9));
+  const pm = palm(h);
+  const x = zoneX(F.x.f(pm.x, t));
+  const height = clamp01(1 - (F.y.f(pm.y, t) - 0.1) / 0.8);
+  const open = clamp01((F.open.f(openness(h), t) - 1.0) / 0.9);
+  const dx = (mx(h[9]) - mx(h[0])) * VW, dy = (h[9].y - h[0].y) * VH;
+  let ang = Math.atan2(dx, -dy) * 180 / Math.PI;
+  ang = Math.sign(ang) * Math.max(0, Math.abs(ang) - 6);
+  const roll = F.roll.f(ang, t) / S.bendDeg;
+  const pd = dist(h, 4, 8) / size, pOn = S.pinch / 100;
+  if (!P.pinchOn && pd < pOn) P.pinchOn = true; else if (P.pinchOn && pd > pOn + 0.15) P.pinchOn = false;
+  const c = countFingers(h);
+  if (c === P.fCand) P.fCandN++; else { P.fCand = c; P.fCandN = 1; }
+  if (P.fCandN >= 2) P.fingers = c;
+  if (lastPalmX !== null && t > lastT) speed = speed * 0.6 + 0.4 * Math.abs(pm.x - lastPalmX) / (t - lastT);
+  lastPalmX = pm.x; lastT = t;
+  const height2 = h2 ? clamp01(1 - (F.y2.f(palm(h2).y, t) - 0.1) / 0.8) : null;
+  const vel = S.vel;
+
+  switch (S.mode) {
+    case 'pro': {
+      const d = quantize(x);
+      P.deg = d;
+      setNotes(P.pinchOn ? [noteFor(d)] : [], vel);
+      if (S.bendOn) bend(roll);
+      if (S.ccAOn) cc(S.ccA, open);
+      break;
+    }
+    case 'chords': {
+      const n = degrees();
+      if (P.fingers === 0) { setNotes([], vel); P.deg = -1; }
+      else {
+        const d = Math.min(n - 1, P.fingers - 1);
+        P.deg = d;
+        setNotes([noteFor(d), noteFor(d + 2), noteFor(d + 4)], vel);
+      }
+      if (S.ccAOn) cc(S.ccA, height);
+      break;
+    }
+    case 'harp': {
+      const d = quantize(x);
+      if (P.harpPrev >= 0 && d !== P.harpPrev) {
+        const v = Math.max(30, Math.min(127, Math.round(40 + clamp01(speed / 1.5) * 87)));
+        pluck(noteFor(d), Math.round(v * S.vel / 127));
+      }
+      P.harpPrev = d; P.deg = d;
+      if (S.bendOn) bend(roll);
+      if (S.ccAOn) cc(S.ccA, height);
+      break;
+    }
+    case 'theremin': {
+      const d = quantize(x);
+      P.deg = d;
+      setNotes(P.fingers === 0 ? [] : [noteFor(d)], vel);
+      if (S.bendOn) bend(roll);
+      if (S.ccAOn) cc(S.ccA, height);
+      break;
+    }
+    case 'expr': {
+      if (S.bendOn) bend(roll);
+      if (S.ccAOn) cc(S.ccA, open);
+      if (S.ccBOn) cc(S.ccB, height);
+      break;
+    }
+  }
+  if (S.mode !== 'expr' && S.ccBOn && height2 !== null) cc(S.ccB, height2);
+  return { h, h2, x, height, open, roll, pd };
+}
+
+// ---------------------------------------------------------------- drawing
+const cv = $('view'), g = cv.getContext('2d');
+function chordName(d) {
+  const a = noteFor(d), b = noteFor(d + 2), c = noteFor(d + 4);
+  const third = (b - a + 120) % 12, fifth = (c - a + 120) % 12;
+  const q = third === 3 ? (fifth === 6 ? 'dim' : 'm') : (fifth === 8 ? 'aum' : '');
+  return (ROMAN[d % 7] || '') + ' · ' + ROOTS[a % 12] + q;
+}
+function draw(video, info) {
+  const W = cv.width, H = cv.height;
+  g.save(); g.translate(W, 0); g.scale(-1, 1); g.drawImage(video, 0, 0, W, H); g.restore();
+  g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, W, H);
+
+  if (S.mode === 'pro' || S.mode === 'harp' || S.mode === 'theremin') {
+    const n = degrees(), w = S.width / 100, lo = 0.5 - w / 2;
+    g.font = `${Math.max(11, W / 90)}px system-ui`; g.textAlign = 'center';
+    for (let i = 0; i < n; i++) {
+      const xa = (lo + w * i / n) * W, xb = (lo + w * (i + 1) / n) * W;
+      g.fillStyle = i === P.deg ? (P.sounding.length || S.mode === 'harp' ? 'rgba(124,224,176,0.38)' : 'rgba(124,224,176,0.18)')
+        : (i % 2 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.09)');
+      g.fillRect(xa, 0, xb - xa, H);
+      g.fillStyle = i === P.deg ? '#7ce0b0' : 'rgba(255,255,255,0.6)';
+      g.fillText(noteName(noteFor(i)), (xa + xb) / 2, H - 12);
+    }
+  }
+  const toX = (p) => mx(p) * W, toY = (p) => p.y * H;
+  if (info) {
+    [[info.h, '#7ce0b0'], [info.h2, '#ffb020']].forEach(([h, col]) => {
+      if (!h) return;
+      g.strokeStyle = col; g.fillStyle = col; g.lineWidth = Math.max(2, W / 400); g.lineCap = 'round';
+      for (const [a, b] of BONES) { g.beginPath(); g.moveTo(toX(h[a]), toY(h[a])); g.lineTo(toX(h[b]), toY(h[b])); g.stroke(); }
+      for (const p of h) { g.beginPath(); g.arc(toX(p), toY(p), Math.max(3, W / 300), 0, 7); g.fill(); }
+    });
+    const h = info.h, cx = (toX(h[4]) + toX(h[8])) / 2, cy = (toY(h[4]) + toY(h[8])) / 2;
+    g.strokeStyle = '#ffb020'; g.fillStyle = '#ffb020'; g.lineWidth = 3;
+    g.beginPath(); g.arc(cx, cy, P.pinchOn ? 14 : 10, 0, 7); P.pinchOn ? g.fill() : g.stroke();
+    if (S.mode === 'chords') {
+      g.font = `bold ${Math.max(18, W / 30)}px system-ui`; g.textAlign = 'center'; g.fillStyle = '#fff';
+      g.fillText(P.fingers ? `${P.fingers} ✋  ${chordName(P.deg)}` : '✊ silencio', toX(h[0]), toY(h[0]) + Math.max(30, W / 22));
+    }
+  }
+  const bn = $('bignote');
+  const on = P.sounding.length > 0 || (S.mode === 'harp' && performance.now() - (P.plucked || 0) < 260);
+  bn.textContent = S.mode === 'expr' ? '' : (S.mode === 'chords' && P.deg >= 0 ? chordName(P.deg) : noteName(P.shown));
+  bn.classList.toggle('on', on);
+}
+
+// ---------------------------------------------------------------- main loop
+let det = null, delegate = '', video = null, lastVT = -1, frames = 0, fpsT = 0, fps = 0, detMs = 0;
+
+async function initDetector() {
+  const { HandLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs');
+  const files = await FilesetResolver.forVisionTasks(MP + '/wasm');
+  for (const d of ['GPU', 'CPU']) {
+    try {
+      det = await HandLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2,
+        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
+      delegate = d; break;
+    } catch (e) { console.warn('delegate ' + d + ' failed', e); }
+  }
+  const chip = $('chipDet');
+  if (!det) { chip.textContent = 'Detector: no disponible'; chip.className = 'chip bad'; throw new Error('No se pudo cargar el detector de manos'); }
+  chip.textContent = 'Detector: ' + delegate; chip.className = 'chip ' + (delegate === 'GPU' ? 'ok' : '');
+}
+
+async function initCamera() {
+  video = document.createElement('video');
+  video.playsInline = true; video.muted = true;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+    video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 }, facingMode: 'user' } });
+  video.srcObject = stream;
+  await video.play();
+  VW = video.videoWidth || 1280; VH = video.videoHeight || 720;
+  cv.width = VW; cv.height = VH;
+  $('stage').style.aspectRatio = `${VW} / ${VH}`;
+  const s = stream.getVideoTracks()[0].getSettings();
+  $('chipCam').textContent = `Cámara: ${VW}×${VH}${s.frameRate ? ' · ' + Math.round(s.frameRate) + ' fps' : ''}`;
+  $('chipCam').className = 'chip ok';
+}
+
+function loop() {
+  const now = performance.now();
+  if (video.readyState >= 2 && video.currentTime !== lastVT) {
+    lastVT = video.currentTime;
+    const t0 = performance.now();
+    const res = det.detectForVideo(video, now);
+    detMs = detMs * 0.8 + (performance.now() - t0) * 0.2;
+    const info = processHands((res.landmarks || []).map((h) => h.slice()), now);
+    draw(video, info);
+    frames++;
+  }
+  if (now - fpsT > 500) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  $('hud').textContent = `${delegate} · detección ${detMs.toFixed(1)} ms · ${fps.toFixed(0)} fps`;
+  requestAnimationFrame(loop);
+}
+
+$('go').onclick = async () => {
+  $('go').disabled = true; $('go').textContent = 'Cargando…'; $('startErr').textContent = '';
+  try {
+    await Promise.all([initMidi(), initCamera(), initDetector()]);
+    $('start').style.display = 'none';
+    requestAnimationFrame(loop);
+  } catch (e) {
+    $('startErr').textContent = 'No se pudo empezar: ' + (e && e.message ? e.message : e);
+    $('go').disabled = false; $('go').textContent = 'Reintentar';
+  }
+};
+window.addEventListener('beforeunload', allOff);
+window.__pm = { S, P, processHands, setOutputsForTest: (fake) => { midi = fake; listOutputs(); } };
+</script>
+</body>
+</html>

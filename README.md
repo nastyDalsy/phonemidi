@@ -42,6 +42,13 @@ Or open the folder in Android Studio and press Run.
   Motion scenes always work. The microphone gets silence while another app records audio,
   and the camera scenes pause while another app uses the camera (they resume when it is free).
 
+## Hands on a computer (faster, more precise)
+`web/manos.html` does the hand tracking with the computer's webcam and GPU and sends MIDI
+straight to the synth (FM-1 over USB-C). Download `manos.html` from the latest release, open
+it in Chrome or Edge, press **Empezar** and allow camera + MIDI. Modes: Mano Pro, Acordes,
+Arpa de aire, Theremin, Expresión. Nothing to install; it needs internet the first time to
+load the hand model.
+
 ## Project layout
     app/src/main/java/com/dalsy/phonemidi/
       MainActivity.java   UI

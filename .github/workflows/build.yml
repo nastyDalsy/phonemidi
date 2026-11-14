@@ -30,12 +30,15 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk PhoneMIDI.apk
+          cp web/manos.html manos.html
 
       # Download from the run page: Actions -> this run -> Artifacts
       - uses: actions/upload-artifact@v4
         with:
           name: PhoneMIDI-apk
-          path: PhoneMIDI.apk
+          path: |
+            PhoneMIDI.apk
+            manos.html
 
       # Direct download link (no login, no zip):
       # https://github.com/<owner>/<repo>/releases/download/latest/PhoneMIDI.apk
@@ -50,6 +53,8 @@ jobs:
         with:
           tag_name: latest
           name: Latest APK
-          body: "Built from ${{ github.ref_name }} @ ${{ github.sha }}. Download PhoneMIDI.apk below and open it on your Android phone."
+          body: "Built from ${{ github.ref_name }} @ ${{ github.sha }}. Phone: download PhoneMIDI.apk and open it on Android. Computer: download manos.html and open it in Chrome/Edge (hand tracking with the webcam, MIDI over USB)."
           prerelease: true
-          files: PhoneMIDI.apk
+          files: |
+            PhoneMIDI.apk
+            manos.html
