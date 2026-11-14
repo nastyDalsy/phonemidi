@@ -25,13 +25,14 @@ public class Melody {
             {0, 3, 5, 6, 7, 10},
             {0, 2, 4, 6, 8, 10}};
 
-    public static final int GLIDE = 0, STEP = 1, RHYTHM = 2, SHAKE = 3, ARP = 4;
+    public static final int GLIDE = 0, STEP = 1, RHYTHM = 2, SHAKE = 3, ARP = 4, CHORD = 5;
     public static final String[] MODE_NAMES = {
             "Fluido (una nota sigue tu mano)",
             "Escalera (suena cada escalón)",
             "Ritmo (reloj, tú eliges la nota)",
             "Golpes (sacude para tocar)",
-            "Arpegio (más movimiento = más rápido)"};
+            "Arpegio (más movimiento = más rápido)",
+            "Acordes (tríadas de la escala)"};
 
     public static final String[] ROOT_NAMES =
             {"Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"};
@@ -67,6 +68,9 @@ public class Melody {
     private boolean above = false;
     private int arpStep = 0;
     private final ArrayList<long[]> pending = new ArrayList<>(); // {note, offTime}
+    private int chordDeg = -1;
+    private int[] chordNotes = new int[0];
+    private boolean pinchGate = false;
 
     public int degrees() {
         return SCALES[scale].length * octaves;
@@ -86,7 +90,7 @@ public class Melody {
     }
 
     public boolean isSounding() {
-        return curNote >= 0 || !pending.isEmpty();
+        return curNote >= 0 || chordDeg >= 0 || !pending.isEmpty();
     }
 
     // ------------------------------------------------------------ playing
@@ -141,6 +145,10 @@ public class Melody {
         if (curNote >= 0) off(curNote, hub);
         for (long[] p : pending) off((int) p[0], hub);
         pending.clear();
+        for (int cn : chordNotes) off(cn, hub);
+        chordNotes = new int[0];
+        chordDeg = -1;
+        pinchGate = false;
         curNote = -1;
         prevDeg = -1;
         nextTick = 0;
@@ -150,14 +158,20 @@ public class Melody {
     public void update(float[] v, long now, MidiHub hub) {
         flushOffs(now, hub);
         if (!enabled) {
-            if (curNote >= 0) stop(hub);
+            if (curNote >= 0 || chordDeg >= 0) stop(hub);
             return;
         }
 
         int n = degrees();
         float f = position(v) * n;
         int deg = curDeg;
-        if (prevDeg < 0 || deg >= n) {
+        boolean fist = false;
+        if (pitchSrc == SensorEngine.HAND_FINGERS) {
+            // 1..5 raised fingers = degree 1..5 of the scale, a fist = silence
+            int count = Math.max(0, Math.min(5, (int) (v[pitchSrc] * 6f)));
+            fist = count == 0;
+            deg = Math.min(n - 1, Math.max(0, count - 1));
+        } else if (prevDeg < 0 || deg >= n) {
             deg = Math.min(n - 1, (int) f);
         } else if (f < deg - 0.12f || f > deg + 1.12f) { // hysteresis: no flutter on a boundary
             deg = Math.max(0, Math.min(n - 1, (int) f));
@@ -170,10 +184,17 @@ public class Melody {
             gate = true;
         } else if (gateSrc == GATE_TOUCH) {
             gate = touch;
+        } else if (gateSrc == SensorEngine.HAND_PINCH) {
+            float pv = v[gateSrc];
+            if (!pinchGate && pv > 0.7f) pinchGate = true;
+            else if (pinchGate && pv < 0.4f) pinchGate = false;
+            gate = pinchGate;
         } else {
             if (v[gateSrc] > 0.06f) gateUntil = now + 220;
             gate = now < gateUntil;
         }
+
+        if (fist) gate = false;
 
         switch (mode) {
             case GLIDE: {
@@ -213,7 +234,22 @@ public class Melody {
                 }
                 break;
             }
-            default: { // ARP
+            case CHORD: {
+                int want = gate ? deg : -1;
+                if (want != chordDeg) {
+                    int[] next = want >= 0
+                            ? new int[]{noteForDegree(want), noteForDegree(want + 2), noteForDegree(want + 4)}
+                            : new int[0];
+                    for (int o : chordNotes) if (!contains(next, o)) off(o, hub);
+                    int vel = velocity(v, 0f);
+                    for (int nn : next) if (!contains(chordNotes, nn)) on(nn, vel, hub, now);
+                    if (want >= 0) shown = next[0];
+                    chordNotes = next;
+                    chordDeg = want;
+                }
+                break;
+            }
+            case ARP: {
                 float sp = clamp01(v[5] * 3f);
                 if (sp > 0.05f && gate) {
                     long interval = (long) (450 - 360 * sp);
@@ -232,6 +268,11 @@ public class Melody {
             }
         }
         prevDeg = deg;
+    }
+
+    private static boolean contains(int[] a, int x) {
+        for (int y : a) if (y == x) return true;
+        return false;
     }
 
     // ------------------------------------------------------------ persistence

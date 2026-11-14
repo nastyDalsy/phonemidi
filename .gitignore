@@ -6,3 +6,6 @@ local.properties
 
 # Gradle wrapper jar must be committed
 !gradle/wrapper/gradle-wrapper.jar
+
+# downloaded at build time
+app/src/main/assets/hand_landmarker.task

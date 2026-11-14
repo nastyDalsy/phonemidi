@@ -26,6 +26,10 @@ public class CamView extends View {
     private int guideN = 0;
     private boolean guideVert = true;
     private int guideCur = -1;
+    private float guideLo = 0f, guideHi = 1f;
+    private boolean guideFlip = false;
+    private final Paint bone = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public CamView(Context c, SensorEngine e) {
         super(c);
@@ -38,12 +42,19 @@ public class CamView extends View {
         txt.setColor(0xFFB8B8C8);
         txt.setTextSize(14f * dp);
         txt.setTextAlign(Paint.Align.CENTER);
+        bone.setStyle(Paint.Style.STROKE);
+        bone.setStrokeWidth(3f * dp);
+        bone.setStrokeCap(Paint.Cap.ROUND);
     }
 
-    public void setGuides(int n, boolean vertical, int current) {
+    /** Note bands over the picture: n bands between lo..hi; flip = band 0 at the bottom/right. */
+    public void setGuides(int n, boolean vertical, int current, float lo, float hi, boolean flip) {
         guideN = n;
         guideVert = vertical;
         guideCur = current;
+        guideLo = lo;
+        guideHi = hi;
+        guideFlip = flip;
     }
 
     @Override
@@ -53,6 +64,9 @@ public class CamView extends View {
         int w = eng.vizW, h = eng.vizH;
         if (!eng.isCameraOn() || px == null || w <= 0 || h <= 0 || px.length < w * h) {
             canvas.drawText("Esperando la cámara…", getWidth() / 2f, getHeight() / 2f, txt);
+            if (eng.handsActive()) {
+                canvas.drawText(eng.handStatus(), getWidth() / 2f, getHeight() / 2f + 22f * dp, txt);
+            }
             return;
         }
         if (bmp == null || bw != w || bh != h) {
@@ -66,19 +80,51 @@ public class CamView extends View {
         float dw = w * scale, dh = h * scale;
         float l = (vw - dw) / 2f, t = (vh - dh) / 2f;
         dst.set(l, t, l + dw, t + dh);
+        pix.setFilterBitmap(w > 64);
         canvas.drawBitmap(bmp, null, dst, pix);
 
         if (guideN > 1) {
             for (int i = 0; i < guideN; i++) {
-                band.setColor(i == guideCur ? 0x4D7CE0B0 : ((i & 1) == 0 ? 0x1AFFFFFF : 0x0DFFFFFF));
+                int k = guideFlip ? guideN - 1 - i : i;
+                band.setColor(k == guideCur ? 0x597CE0B0 : ((k & 1) == 0 ? 0x1FFFFFFF : 0x0AFFFFFF));
+                float fa = guideLo + (guideHi - guideLo) * i / guideN;
+                float fb = guideLo + (guideHi - guideLo) * (i + 1) / guideN;
                 if (guideVert) {
-                    float a = l + dw * i / guideN, b = l + dw * (i + 1) / guideN;
-                    canvas.drawRect(a, t, b, t + dh, band);
+                    canvas.drawRect(l + dw * fa, t, l + dw * fb, t + dh, band);
                 } else {
-                    float a = t + dh * i / guideN, b = t + dh * (i + 1) / guideN;
-                    canvas.drawRect(l, a, l + dw, b, band);
+                    canvas.drawRect(l, t + dh * fa, l + dw, t + dh * fb, band);
                 }
             }
+        }
+
+        if (eng.handsActive()) {
+            float[][] hs = eng.hands;
+            for (int hi = 0; hi < hs.length; hi++) {
+                float[] p = hs[hi];
+                int col = hi == 0 ? 0xFF7CE0B0 : 0xFFFFB020;
+                bone.setColor(col);
+                dot.setColor(col);
+                for (int[] bn : HandTracker.BONES) {
+                    canvas.drawLine(l + p[2 * bn[0]] * dw, t + p[2 * bn[0] + 1] * dh,
+                            l + p[2 * bn[1]] * dw, t + p[2 * bn[1] + 1] * dh, bone);
+                }
+                for (int k = 0; k < 21; k++) {
+                    canvas.drawCircle(l + p[2 * k] * dw, t + p[2 * k + 1] * dh, 3.5f * dp, dot);
+                }
+                if (hi == 0) {
+                    float mx = l + (p[8] + p[16]) / 2f * dw, my = t + (p[9] + p[17]) / 2f * dh;
+                    boolean closed = eng.v[SensorEngine.HAND_PINCH] > 0.7f;
+                    ring.setStyle(closed ? Paint.Style.FILL : Paint.Style.STROKE);
+                    canvas.drawCircle(mx, my, (closed ? 12f : 9f) * dp, ring);
+                    ring.setStyle(Paint.Style.STROKE);
+                    int fingers = (int) (eng.v[SensorEngine.HAND_FINGERS] * 6f);
+                    canvas.drawText("✋ " + fingers, l + p[0] * dw, t + p[1] * dh + 26f * dp, txt);
+                }
+            }
+            if (hs.length == 0) {
+                canvas.drawText(eng.handStatus(), getWidth() / 2f, t + dh - 14f * dp, txt);
+            }
+            return;
         }
 
         float cx = l + eng.v[9] * dw, cy = t + eng.v[10] * dh;

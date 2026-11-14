@@ -48,12 +48,32 @@ public class SensorEngine implements SensorEventListener {
             "Camera: motion X",     // 9
             "Camera: motion Y",     // 10
             "Mic: level",           // 11
-            "Mic: brightness (hi/lo)" // 12
+            "Mic: brightness (hi/lo)", // 12
+            "Hand: left/right",     // 13
+            "Hand: height",         // 14
+            "Hand: pinch",          // 15
+            "Hand: open/closed",    // 16
+            "Hand: wrist tilt",     // 17
+            "Hand: raised fingers", // 18
+            "Other hand: height",   // 19
+            "Other hand: open/closed", // 20
+            "Hand: visible"         // 21
     };
+    public static final int HAND_X = 13, HAND_Y = 14, HAND_PINCH = 15, HAND_OPEN = 16,
+            HAND_ROLL = 17, HAND_FINGERS = 18, HAND2_Y = 19, HAND2_OPEN = 20, HAND_SEEN = 21;
+
+    /** 0 = phone motion, 1 = simple camera, 2 = microphone, 3 = hand tracking */
+    public static int kind(int src) {
+        if (src <= 6) return 0;
+        if (src <= 10) return 1;
+        if (src <= 12) return 2;
+        return 3;
+    }
     public static final int COUNT = NAMES.length;
 
     /** 0 = value * sens, 1 = centered around 0.5, 2 = no gain */
-    public static final int[] GAIN_MODE = {1, 1, 1, 1, 1, 0, 0, 0, 2, 2, 2, 0, 0};
+    public static final int[] GAIN_MODE = {1, 1, 1, 1, 1, 0, 0, 0, 2, 2, 2, 0, 0,
+            2, 2, 2, 2, 1, 2, 2, 2, 2};
 
     /** Latest normalized values. */
     public final float[] v = new float[COUNT];
@@ -106,6 +126,40 @@ public class SensorEngine implements SensorEventListener {
         for (int i = 0; i < COUNT; i++) v[i] = 0f;
         v[0] = v[1] = v[2] = v[3] = v[4] = 0.5f;
         v[9] = v[10] = 0.5f;
+        resetHands();
+    }
+
+    private void resetHands() {
+        for (int i = HAND_X; i < COUNT; i++) v[i] = 0f;
+        v[HAND_X] = v[HAND_Y] = 0.5f;
+        v[HAND_ROLL] = 0.5f;
+        v[HAND_FINGERS] = 0.5f / 6f;
+        hands = new float[0][];
+    }
+
+    // hand tracking
+    private HandTracker hand;
+    private volatile boolean handsOn = false;
+    /** Landmarks of the visible hands (21 x/y pairs each, picture coordinates 0..1). */
+    public volatile float[][] hands = new float[0][];
+
+    public void setHands(boolean on) {
+        if (on == handsOn) return;
+        handsOn = on;
+        if (on) {
+            if (hand == null) hand = new HandTracker(ctx, this);
+            hand.start();
+        } else {
+            resetHands();
+        }
+    }
+
+    public boolean handsActive() {
+        return handsOn && hand != null;
+    }
+
+    public String handStatus() {
+        return hand == null ? "" : hand.status;
     }
 
     private static float clamp(float x, float lo, float hi) {
@@ -305,6 +359,8 @@ public class SensorEngine implements SensorEventListener {
         camThread = null;
         camHandler = null;
         prevGrid = null;
+        vizPix = null;
+        resetHands();
         v[7] = 0f;
         v[8] = 0f;
         v[9] = 0.5f;
@@ -312,6 +368,8 @@ public class SensorEngine implements SensorEventListener {
     }
 
     private void analyze(Image img) {
+        boolean handMode = handsOn && hand != null;
+        if (handMode) hand.frame(img, camRot, camFrontNow);
         Image.Plane p = img.getPlanes()[0];
         ByteBuffer buf = p.getBuffer();
         int rs = p.getRowStride();
@@ -343,7 +401,7 @@ public class SensorEngine implements SensorEventListener {
 
         float[] prev = prevGrid;
         prevGrid = grid;
-        buildViz(grid, prev);
+        if (!handMode) buildViz(grid, prev);
         if (prev == null) return;
 
         int active = 0;

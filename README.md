@@ -30,6 +30,11 @@ Or open the folder in Android Studio and press Run.
    gestures -> sound controls. Tap a gesture to change what it controls (pitch bend,
    vibrato, volume, expression, brightness, reverb...) and choose Suave / Medio / Fuerte.
 5. **Centrar inclinación**: hold the phone the way you play and tap it.
+- **Hand scenes** (Mano Pro, Acordes, Arpa de aire, Manos) use real hand tracking
+  (MediaPipe, 21 points per hand). Put the phone on a stand facing you, front camera,
+  good light. Mano Pro: slide the right hand to pick the note, pinch thumb + index to play,
+  tilt the wrist to bend, raise the other hand for vibrato. Acordes: 1-5 fingers = chords
+  I-V of the scale, fist = silence.
 - **Ajustes avanzados** has the full mapping editor, camera choice, Solo for MIDI learn,
   "visible por Bluetooth" (phone shows up as a MIDI device for Ableton) and mic -> audio output.
 - Keep the app open with the screen on (it stops sensors when backgrounded).
@@ -44,4 +49,5 @@ Or open the folder in Android Studio and press Run.
       Melody.java         quantizes a sensor to a scale and plays notes (5 play modes)
       CamView.java        shows what the camera tracking sees
       LadderView.java     the scale steps with the current one lit
+      HandTracker.java    hand tracking -> position, pinch, open/closed, wrist tilt, fingers
     .github/workflows/build.yml  CI that builds the APK

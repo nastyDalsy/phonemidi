@@ -66,7 +66,16 @@ public class MainActivity extends Activity {
             "Cámara: mano izquierda ↔ derecha",
             "Cámara: mano arriba ↕ abajo",
             "Voz: volumen",
-            "Voz: agudo ↔ grave"
+            "Voz: agudo ↔ grave",
+            "Mano: izquierda ↔ derecha",
+            "Mano: altura",
+            "Mano: pinza (pulgar + índice)",
+            "Mano: abrir ↔ cerrar",
+            "Mano: girar la muñeca",
+            "Mano: dedos levantados",
+            "Otra mano: altura",
+            "Otra mano: abrir ↔ cerrar",
+            "Mano: visible"
     };
 
     /** What a gesture can control, in musical terms. */
@@ -79,23 +88,27 @@ public class MainActivity extends Activity {
     private static final int[] DEST_NUM = {0, 1, 7, 11, 74, 71, 91, 93, 60, -1};
 
     private static final String[] SCENES = {
-            "Arpa", "Theremin", "Ritmo", "Golpes", "Arpegio", "Mano",
-            "Expresivo", "Vibrato", "Voz", "Cámara"};
-    private static final int FIRST_EXPRESSIVE = 6;
+            "Arpa", "Theremin", "Ritmo", "Golpes", "Arpegio",
+            "Mano Pro", "Acordes", "Arpa de aire",
+            "Expresivo", "Vibrato", "Voz", "Manos"};
+    private static final int FIRST_EXPRESSIVE = 8;
     private static final String[] SCENE_HELP = {
             "Inclina el teléfono a izquierda/derecha: cada escalón de la escala suena una nota, como pasar los dedos por un arpa. Inclinar adelante/atrás abre el brillo.",
             "Mantén pulsado el pad y la nota sigue tu inclinación, siempre dentro de la escala. Moverte añade vibrato.",
             "Un ritmo constante: inclina para elegir la nota. Solo suena mientras te mueves; si te detienes, calla.",
             "Elige la nota inclinando y sacude el teléfono para tocarla, más fuerte = más volumen.",
             "Muévete y toca un arpegio: más movimiento = más rápido. Inclinar izquierda/derecha cambia la nota base.",
-            "Sin tocar el teléfono: mueve la mano frente a la cámara. Izquierda↔derecha elige la nota, arriba↕abajo el brillo.",
+            "Teléfono apoyado frente a ti. Mano derecha: muévela a los lados para elegir la nota y junta pulgar e índice (pinza) para tocarla; deslízala con la pinza cerrada para ligar notas. Gira la muñeca para doblar la nota. Sube la otra mano para vibrato.",
+            "Levanta dedos: 1 a 5 dedos = acordes I, II, III, IV y V de la escala. El puño calla. Sube o baja la mano para cambiar el brillo.",
+            "Pasa la mano de un lado a otro frente a la cámara: cada franja suena una nota, como un arpa en el aire. Gira la muñeca para doblar.",
             "Sin notas: inclina para doblar la afinación y abrir el brillo; muévete para dar vibrato.",
             "Sin notas: mientras más te mueves, más vibrato.",
             "Sin notas: tu voz controla expresión y brillo.",
-            "Sin notas: mueve la mano frente a la cámara para controlar brillo y vibrato."};
-    private static final int[] PITCH_SRCS = {0, 1, 2, 9, 10, 12};
+            "Sin notas: tú tocas el FM-1 y la cámara lee tus manos. Girar la muñeca dobla la nota, la altura de la mano da vibrato, abrir la mano abre el brillo."};
+    private static final int[] PITCH_SRCS = {0, 1, 2, 13, 14, 18, 9, 10, 12};
     private static final String[] GATE_NAMES = {
-            "Siempre", "Solo mientras te mueves", "Mientras mantienes pulsado el pad"};
+            "Siempre", "Mientras te mueves (o se ve la mano)", "Mientras mantienes pulsado el pad",
+            "Al hacer pinza (pulgar + índice)"};
     private static final String[] DIV_NAMES = {"Negras (1/4)", "Corcheas (1/8)", "Semicorcheas (1/16)"};
     private static final float[] SENS_LEVELS = {0.7f, 1.5f, 3f};
     private static final String[] SENS_NAMES = {"Suave", "Medio", "Fuerte"};
@@ -255,26 +268,39 @@ public class MainActivity extends Activity {
                 mel(Melody.ARP, 0, 2f, 3, 2, Melody.GATE_ALWAYS, true);
                 maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 break;
-            case 5: // Mano (cámara)
-                mel(Melody.GLIDE, 9, 1f, 1, 2, 7, false);
-                maps.add(mk(10, Mapping.CC, 74, 1.0f, 0.4f));
+            case 5: // Mano Pro: pinch to play, slide to choose, wrist bends
+                mel(Melody.GLIDE, SensorEngine.HAND_X, 1f, 1, 2, SensorEngine.HAND_PINCH, false);
+                maps.add(mk(SensorEngine.HAND_ROLL, Mapping.PB, 0, 1.0f, 0.2f));
+                maps.add(mk(SensorEngine.HAND2_Y, Mapping.CC, 1, 1.0f, 0.3f));
+                maps.add(mk(SensorEngine.HAND_OPEN, Mapping.CC, 74, 1.0f, 0.3f));
                 break;
-            case 6: // Expresivo
+            case 6: // Acordes con los dedos
+                mel(Melody.CHORD, SensorEngine.HAND_FINGERS, 1f, 2, 1, SensorEngine.HAND_SEEN, false);
+                maps.add(mk(SensorEngine.HAND_Y, Mapping.CC, 74, 1.0f, 0.3f));
+                maps.add(mk(SensorEngine.HAND2_Y, Mapping.CC, 1, 1.0f, 0.3f));
+                break;
+            case 7: // Arpa de aire
+                mel(Melody.STEP, SensorEngine.HAND_X, 1f, 0, 2, SensorEngine.HAND_SEEN, false);
+                maps.add(mk(SensorEngine.HAND_ROLL, Mapping.PB, 0, 1.0f, 0.2f));
+                maps.add(mk(SensorEngine.HAND_Y, Mapping.CC, 74, 1.0f, 0.3f));
+                break;
+            case 8: // Expresivo
                 maps.add(mk(0, Mapping.PB, 0, 1.2f, 0.35f));
                 maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 maps.add(mk(5, Mapping.CC, 1, 2.5f, 0.5f));
                 break;
-            case 7: // Vibrato
+            case 9: // Vibrato
                 maps.add(mk(5, Mapping.CC, 1, 2.5f, 0.5f));
                 maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 break;
-            case 8: // Voz
+            case 10: // Voz
                 maps.add(mk(11, Mapping.CC, 11, 1.5f, 0.3f));
                 maps.add(mk(12, Mapping.CC, 74, 1.0f, 0.4f));
                 break;
-            case 9: // Cámara
-                maps.add(mk(9, Mapping.CC, 74, 1.0f, 0.4f));
-                maps.add(mk(10, Mapping.CC, 1, 1.0f, 0.4f));
+            case 11: // Manos (expresión)
+                maps.add(mk(SensorEngine.HAND_ROLL, Mapping.PB, 0, 1.0f, 0.2f));
+                maps.add(mk(SensorEngine.HAND_Y, Mapping.CC, 1, 1.0f, 0.3f));
+                maps.add(mk(SensorEngine.HAND_OPEN, Mapping.CC, 74, 1.0f, 0.3f));
                 break;
             default: // Arpa
                 mel(Melody.STEP, 0, 2f, 0, 2, Melody.GATE_ALWAYS, true);
@@ -331,26 +357,21 @@ public class MainActivity extends Activity {
     }
 
     private void applyNeeds() {
-        boolean motion = false, cam = false, mic = false;
+        boolean[] need = new boolean[4]; // motion, camera, mic, hands
         for (Mapping m : maps) {
-            if (!m.enabled) continue;
-            if (m.source <= 6) motion = true;
-            else if (m.source <= 10) cam = true;
-            else mic = true;
+            if (m.enabled) need[SensorEngine.kind(m.source)] = true;
         }
         if (melody.enabled) {
-            int[] used = {melody.pitchSrc, melody.gateSrc};
-            for (int src : used) {
-                if (src < 0) continue;
-                if (src <= 6) motion = true;
-                else if (src <= 10) cam = true;
-                else mic = true;
-            }
-            if (melody.dynVel || melody.mode == Melody.ARP || melody.mode == Melody.SHAKE) motion = true;
+            if (melody.pitchSrc >= 0) need[SensorEngine.kind(melody.pitchSrc)] = true;
+            if (melody.gateSrc >= 0) need[SensorEngine.kind(melody.gateSrc)] = true;
+            if (melody.dynVel || melody.mode == Melody.ARP || melody.mode == Melody.SHAKE) need[0] = true;
         }
+        boolean cam = need[1] || need[3];
         if (camBox != null) camBox.setVisibility(cam ? View.VISIBLE : View.GONE);
-        eng.setMotion(motion);
+        eng.setMotion(need[0]);
+        eng.setHands(need[3]);
         eng.setCamera(cam, camFront);
+        boolean mic = need[2];
         eng.setPassthrough(prefs().getBoolean("micPass", false)
                 && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED);
@@ -476,12 +497,17 @@ public class MainActivity extends Activity {
                 noteView.setTextColor(0xFF8A8AA0);
             }
             if (camBox.getVisibility() == View.VISIBLE) {
-                if (melody.enabled && melody.pitchSrc == 9) {
-                    camView.setGuides(melody.degrees(), true, melody.curDeg);
-                } else if (melody.enabled && melody.pitchSrc == 10) {
-                    camView.setGuides(melody.degrees(), false, melody.curDeg);
+                int ps = melody.enabled ? melody.pitchSrc : -1;
+                if (ps == 9) {
+                    camView.setGuides(melody.degrees(), true, melody.curDeg, 0f, 1f, false);
+                } else if (ps == 10) {
+                    camView.setGuides(melody.degrees(), false, melody.curDeg, 0f, 1f, false);
+                } else if (ps == SensorEngine.HAND_X) {
+                    camView.setGuides(melody.degrees(), true, melody.curDeg, 0.1f, 0.9f, false);
+                } else if (ps == SensorEngine.HAND_Y) {
+                    camView.setGuides(melody.degrees(), false, melody.curDeg, 0.1f, 0.9f, true);
                 } else {
-                    camView.setGuides(0, true, -1);
+                    camView.setGuides(0, true, -1, 0f, 1f, false);
                 }
                 camView.invalidate();
             }
@@ -833,11 +859,13 @@ public class MainActivity extends Activity {
                 p -> String.format("%.1fx", p / 10f), p -> melody.sens = p / 10f);
 
         box.addView(dlgLabel("Cuándo suena"));
-        int gi = melody.gateSrc == Melody.GATE_ALWAYS ? 0 : (melody.gateSrc == Melody.GATE_TOUCH ? 2 : 1);
+        int gi = melody.gateSrc == Melody.GATE_ALWAYS ? 0 : (melody.gateSrc == Melody.GATE_TOUCH ? 2
+                : (melody.gateSrc == SensorEngine.HAND_PINCH ? 3 : 1));
         box.addView(spinner(GATE_NAMES, gi, pos -> {
             melody.stop(hub);
             melody.gateSrc = pos == 0 ? Melody.GATE_ALWAYS
-                    : (pos == 2 ? Melody.GATE_TOUCH : gateForMoving());
+                    : (pos == 2 ? Melody.GATE_TOUCH
+                    : (pos == 3 ? SensorEngine.HAND_PINCH : gateForMoving()));
             applyNeeds();
             updateStatus();
         }));
@@ -878,6 +906,7 @@ public class MainActivity extends Activity {
 
     /** Sensor used for "only while moving", depending on what picks the note. */
     private int gateForMoving() {
+        if (SensorEngine.kind(melody.pitchSrc) == 3) return SensorEngine.HAND_SEEN;
         if (melody.pitchSrc >= 9 && melody.pitchSrc <= 10) return 7;
         if (melody.pitchSrc >= 11) return 11;
         return 5;
@@ -1284,9 +1313,16 @@ public class MainActivity extends Activity {
         padView.setVisibility(melody.enabled && melody.gateSrc == Melody.GATE_TOUCH
                 ? View.VISIBLE : View.GONE);
         ladder.setVisibility(melody.enabled ? View.VISIBLE : View.GONE);
-        boolean camPitch = melody.enabled && (melody.pitchSrc == 9 || melody.pitchSrc == 10);
-        camCaption.setText("Verde = lo que la cámara ve moverse · anillo = tu mano"
-                + (camPitch ? " · las franjas son las notas de la escala" : " · X e Y mueven los gestos de cámara"));
+        int ps = melody.enabled ? melody.pitchSrc : -1;
+        boolean camPitch = ps == 9 || ps == 10 || ps == SensorEngine.HAND_X || ps == SensorEngine.HAND_Y;
+        if (eng.handsActive()) {
+            camCaption.setText("Verde = la mano que toca · naranja = la otra mano · círculo lleno = pinza cerrada"
+                    + (camPitch ? " · las franjas son las notas" : "")
+                    + ". Apoya el teléfono, usa la cámara frontal y buena luz.");
+        } else {
+            camCaption.setText("Verde = lo que la cámara ve moverse · anillo = tu mano"
+                    + (camPitch ? " · las franjas son las notas de la escala" : " · X e Y mueven los gestos de cámara"));
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append("Bluetooth MIDI (modo computadora): ").append(hub.ble.status);
