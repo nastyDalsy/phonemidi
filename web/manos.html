@@ -102,6 +102,18 @@
     </div>
 
     <div class="card">
+      <h2>Ableton / DAW</h2>
+      <p class="help" style="margin-top:0">Elige arriba la salida virtual (Mac: “Controlador IAC”; Windows: el puerto de loopMIDI).
+        Para mapear: en Ableton pulsa <b>MIDI</b> (Cmd/Ctrl+M), haz clic en un parámetro y pulsa aquí el control que quieres enviar solo.</p>
+      <div class="modes" id="learn">
+        <button data-learn="A">Aprender brillo</button>
+        <button data-learn="B">Aprender vibrato</button>
+        <button data-learn="PB">Aprender pitch bend</button>
+        <button data-learn="">Tocar normal</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Presets · estilos</h2>
       <div class="modes" id="presets"></div>
     </div>
@@ -305,7 +317,9 @@ function outputs() {
   const all = [...midi.outputs.values()];
   return S.out === 'all' ? all : all.filter((o) => o.id === S.out);
 }
-function send(bytes) { for (const o of outputs()) { try { o.send(bytes); } catch (e) { /* unplugged */ } } }
+function send(bytes) {
+  if (learn && !bytes.learn && (bytes[0] & 0xF0) !== 0x80) return; // notes and other controls stay quiet
+  for (const o of outputs()) { try { o.send(bytes); } catch (e) { /* unplugged */ } } }
 function listOutputs() {
   const sel = $('out');
   const outs = midi ? [...midi.outputs.values()] : [];
@@ -358,12 +372,16 @@ function pluck(n, vel, dur = 260) {
   P.shown = n; P.plucked = performance.now();
   P.pluckT[n] = setTimeout(() => { send([0x80 | S.ch, n, 0]); delete P.pluckT[n]; }, dur);
 }
+// MIDI learn: while set, only that one control is sent (and it sweeps by itself), so the DAW maps it.
+let learn = '';
 function cc(num, val) {
+  if (learn) return;
   val = Math.round(clamp01(val) * 127);
   if (P.lastCC[num] === val) return;
   P.lastCC[num] = val; send([0xB0 | S.ch, num & 127, val]);
 }
 function bend(x) { // x in -1..1
+  if (learn) return;
   const pb = Math.round(8192 + Math.max(-1, Math.min(1, x)) * 8191);
   if (pb === P.lastPB) return;
   P.lastPB = pb; send([0xE0 | S.ch, pb & 127, (pb >> 7) & 127]);
@@ -809,6 +827,23 @@ $('go').onclick = async () => {
     $('go').disabled = false; $('go').textContent = 'Reintentar';
   }
 };
+for (const b of $('learn').children) {
+  b.onclick = () => {
+    allOff();
+    learn = b.dataset.learn;
+    for (const x of $('learn').children) x.classList.toggle('sel', x === b && learn !== '');
+  };
+}
+// in learn mode, sweep the chosen control slowly so Ableton sees it move
+setInterval(() => {
+  if (!learn) return;
+  const v = (Math.sin(performance.now() / 600) + 1) / 2;
+  let m;
+  if (learn === 'PB') { const pb = Math.round(v * 16383); m = [0xE0 | S.ch, pb & 127, (pb >> 7) & 127]; }
+  else m = [0xB0 | S.ch, (learn === 'A' ? S.ccA : S.ccB) & 127, Math.round(v * 127)];
+  m.learn = true;
+  send(m);
+}, 60);
 window.addEventListener('beforeunload', allOff);
 window.__pm = { S, P, processHands, setOutputsForTest: (fake) => { midi = fake; listOutputs(); } };
 </script>

@@ -52,6 +52,14 @@ voice, thumb+middle plays the triad) and Expresión, plus style presets (Blues, 
 Koto, Arpa celta, Pad ambient, Theremin clásico...). Nothing to install; it needs internet the first time to
 load the hand model.
 
+### Ableton (computer page)
+- Mac: open *Audio MIDI Setup* > Window > Show MIDI Studio > double-click **IAC Driver** > tick
+  "Device is online". Windows: install **loopMIDI** and create a port.
+- In the page pick that port as the MIDI output. In Ableton > Settings > Link/Tempo/MIDI turn on
+  **Track** and **Remote** for that input. Arm a MIDI track to play notes.
+- To map a control: Cmd/Ctrl+M in Ableton, click a parameter, then press *Aprender brillo /
+  vibrato / pitch bend* in the page (only that control is sent, sweeping). Press *Tocar normal* after.
+
 ## Project layout
     app/src/main/java/com/dalsy/phonemidi/
       MainActivity.java   UI
