@@ -22,7 +22,11 @@ Or open the folder in Android Studio and press Run.
 1. Turn on Bluetooth on the synth (FM-1: hold HOME) or plug it in with a USB-C cable.
 2. In the app tap **Conectar FM-1 / USB** and pick the synth. Do not pair it in Android settings.
 3. Tap **Probar nota** to hear that it works.
-4. Pick a **scene** (Expresivo, Vibrato, Voz, Percusión, Cámara). Each scene is a few
+4. Pick a **scene**. The first six play *notes* quantized to a scale (Arpa, Theremin, Ritmo,
+   Golpes, Arpegio, Mano with the camera) so it always sounds musical; **Ajustes** in the
+   Melodía card changes scale, root, octaves, register, tempo and when it sounds. The camera
+   view shows what is being tracked (green = movement, ring = your hand).
+   The others are expression scenes (no notes). Pick a **scene** (Expresivo, Vibrato, Voz, Percusión, Cámara). Each scene is a few
    gestures -> sound controls. Tap a gesture to change what it controls (pitch bend,
    vibrato, volume, expression, brightness, reverb...) and choose Suave / Medio / Fuerte.
 5. **Centrar inclinación**: hold the phone the way you play and tap it.
@@ -37,4 +41,7 @@ Or open the folder in Android Studio and press Run.
       MidiHub.java        sends every message to BLE + any connected MIDI outputs
       BlePeripheral.java  makes the phone a standard BLE MIDI device
       Mapping.java        one mapping rule (saved as JSON)
+      Melody.java         quantizes a sensor to a scale and plays notes (5 play modes)
+      CamView.java        shows what the camera tracking sees
+      LadderView.java     the scale steps with the current one lit
     .github/workflows/build.yml  CI that builds the APK

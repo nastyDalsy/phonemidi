@@ -81,6 +81,11 @@ public class SensorEngine implements SensorEventListener {
     private float[] prevGrid;
     private float cx = 0.5f, cy = 0.5f;
     private static final int GW = 32, GH = 24;
+    /** Latest picture of what the camera sees (screen orientation), for the on-screen view. */
+    public volatile int[] vizPix;
+    public volatile int vizW, vizH;
+
+    public boolean isCameraOn() { return camOn; }
 
     // audio
     private volatile boolean audioRun = false;
@@ -338,6 +343,7 @@ public class SensorEngine implements SensorEventListener {
 
         float[] prev = prevGrid;
         prevGrid = grid;
+        buildViz(grid, prev);
         if (prev == null) return;
 
         int active = 0;
@@ -373,6 +379,42 @@ public class SensorEngine implements SensorEventListener {
             v[9] = clamp(cx, 0f, 1f);
             v[10] = clamp(cy, 0f, 1f);
         }
+    }
+
+    /** Grey picture + green where things moved, rotated/mirrored like the tracked point. */
+    private void buildViz(float[] grid, float[] prev) {
+        boolean tall = camRot == 90 || camRot == 270;
+        int W = tall ? GH : GW, H = tall ? GW : GH;
+        int[] px = new int[W * H];
+        for (int oy = 0; oy < H; oy++) {
+            for (int ox = 0; ox < W; ox++) {
+                float x = (ox + 0.5f) / W, y = (oy + 0.5f) / H;
+                if (camFrontNow) x = 1f - x;
+                float u, vv;
+                switch (camRot) {
+                    case 90:  vv = 1f - x; u = y; break;
+                    case 180: u = 1f - x;  vv = 1f - y; break;
+                    case 270: vv = x;      u = 1f - y; break;
+                    default:  u = x;       vv = y; break;
+                }
+                int gx = Math.min(GW - 1, Math.max(0, (int) (u * GW)));
+                int gy = Math.min(GH - 1, Math.max(0, (int) (vv * GH)));
+                int i = gy * GW + gx;
+                int g = (int) clamp(grid[i] * 0.7f, 0f, 255f);
+                float d = prev == null ? 0f : Math.abs(grid[i] - prev[i]);
+                int r = g, gr = g, b = g;
+                if (d > 14f) {
+                    float t = clamp((d - 14f) / 50f, 0f, 1f);
+                    r = (int) (g * (1f - t));
+                    gr = (int) (g * (1f - t) + 255f * t);
+                    b = (int) (g * (1f - t) + 120f * t);
+                }
+                px[oy * W + ox] = 0xFF000000 | (r << 16) | (gr << 8) | b;
+            }
+        }
+        vizW = W;
+        vizH = H;
+        vizPix = px;
     }
 
     // ------------------------------------------------------------ audio

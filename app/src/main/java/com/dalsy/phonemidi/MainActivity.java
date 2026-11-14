@@ -78,13 +78,25 @@ public class MainActivity extends Activity {
             Mapping.CC, Mapping.CC, Mapping.CC, Mapping.CC, Mapping.NOTE, Mapping.CC};
     private static final int[] DEST_NUM = {0, 1, 7, 11, 74, 71, 91, 93, 60, -1};
 
-    private static final String[] SCENES = {"Expresivo", "Vibrato", "Voz", "Percusión", "Cámara"};
+    private static final String[] SCENES = {
+            "Arpa", "Theremin", "Ritmo", "Golpes", "Arpegio", "Mano",
+            "Expresivo", "Vibrato", "Voz", "Cámara"};
+    private static final int FIRST_EXPRESSIVE = 6;
     private static final String[] SCENE_HELP = {
-            "Inclina para doblar la nota y abrir el brillo; muévete para dar vibrato.",
-            "Mientras más te mueves, más vibrato. Inclinar adelante/atrás abre el brillo.",
-            "Canta o habla: tu voz controla expresión y brillo.",
-            "Sacude para tocar una nota; inclinar cambia el brillo.",
-            "Mueve la mano frente a la cámara: izquierda↔derecha = brillo, arriba↕abajo = vibrato."};
+            "Inclina el teléfono a izquierda/derecha: cada escalón de la escala suena una nota, como pasar los dedos por un arpa. Inclinar adelante/atrás abre el brillo.",
+            "Mantén pulsado el pad y la nota sigue tu inclinación, siempre dentro de la escala. Moverte añade vibrato.",
+            "Un ritmo constante: inclina para elegir la nota. Solo suena mientras te mueves; si te detienes, calla.",
+            "Elige la nota inclinando y sacude el teléfono para tocarla, más fuerte = más volumen.",
+            "Muévete y toca un arpegio: más movimiento = más rápido. Inclinar izquierda/derecha cambia la nota base.",
+            "Sin tocar el teléfono: mueve la mano frente a la cámara. Izquierda↔derecha elige la nota, arriba↕abajo el brillo.",
+            "Sin notas: inclina para doblar la afinación y abrir el brillo; muévete para dar vibrato.",
+            "Sin notas: mientras más te mueves, más vibrato.",
+            "Sin notas: tu voz controla expresión y brillo.",
+            "Sin notas: mueve la mano frente a la cámara para controlar brillo y vibrato."};
+    private static final int[] PITCH_SRCS = {0, 1, 2, 9, 10, 12};
+    private static final String[] GATE_NAMES = {
+            "Siempre", "Solo mientras te mueves", "Mientras mantienes pulsado el pad"};
+    private static final String[] DIV_NAMES = {"Negras (1/4)", "Corcheas (1/8)", "Semicorcheas (1/16)"};
     private static final float[] SENS_LEVELS = {0.7f, 1.5f, 3f};
     private static final String[] SENS_NAMES = {"Suave", "Medio", "Fuerte"};
 
@@ -97,7 +109,13 @@ public class MainActivity extends Activity {
     private LinearLayout listBox;
     private TextView status;
     private Button btBtn, camBtn, passBtn, advToggle;
-    private LinearLayout playBox, advBox;
+    private LinearLayout playBox, advBox, camBox;
+    private final Melody melody = new Melody();
+    private TextView noteView, padView;
+    private LadderView ladder;
+    private CheckBox melodyOn;
+    private CamView camView;
+    private TextView camCaption;
     private TextView connLine, sceneHelp;
     private final ArrayList<Button> sceneBtns = new ArrayList<>();
     private final ArrayList<Mapping> playMaps = new ArrayList<>();
@@ -194,6 +212,7 @@ public class MainActivity extends Activity {
 
     private void defaults() {
         fillScene(0);
+        prefs().edit().putInt("scene", 0).apply();
     }
 
     private Mapping mk(int src, int type, int num, float sens, float smooth) {
@@ -202,33 +221,64 @@ public class MainActivity extends Activity {
         return m;
     }
 
-    /** Fills {@link #maps} with one of the ready-made scenes. */
+    private void mel(int mode, int pitchSrc, float sens, int scale, int octaves, int gate, boolean dyn) {
+        melody.fromJson(new JSONObject()); // defaults
+        melody.enabled = true;
+        melody.mode = mode;
+        melody.pitchSrc = pitchSrc;
+        melody.sens = sens;
+        melody.scale = scale;
+        melody.octaves = octaves;
+        melody.gateSrc = gate;
+        melody.dynVel = dyn;
+    }
+
+    /** Fills {@link #maps} (and the note player) with one of the ready-made scenes. */
     private void fillScene(int i) {
         maps.clear();
+        melody.fromJson(new JSONObject()); // notes off unless the scene turns them on
         switch (i) {
-            case 1: // Vibrato
+            case 1: // Theremin
+                mel(Melody.GLIDE, 0, 2f, 1, 2, Melody.GATE_TOUCH, true);
+                maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 maps.add(mk(5, Mapping.CC, 1, 2.5f, 0.5f));
+                break;
+            case 2: // Ritmo
+                mel(Melody.RHYTHM, 0, 2f, 4, 2, 5, true);
                 maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 break;
-            case 2: // Voz
-                maps.add(mk(11, Mapping.CC, 11, 1.5f, 0.3f));
-                maps.add(mk(12, Mapping.CC, 74, 1.0f, 0.4f));
-                break;
-            case 3: { // Percusión
-                Mapping hit = mk(6, Mapping.NOTE, 60, 2.0f, 0f);
-                hit.threshold = 0.5f;
-                maps.add(hit);
+            case 3: // Golpes
+                mel(Melody.SHAKE, 0, 2f, 0, 2, Melody.GATE_ALWAYS, true);
                 maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 break;
-            }
-            case 4: // Cámara
-                maps.add(mk(9, Mapping.CC, 74, 1.0f, 0.4f));
-                maps.add(mk(10, Mapping.CC, 1, 1.0f, 0.4f));
+            case 4: // Arpegio
+                mel(Melody.ARP, 0, 2f, 3, 2, Melody.GATE_ALWAYS, true);
+                maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 break;
-            default: // Expresivo
+            case 5: // Mano (cámara)
+                mel(Melody.GLIDE, 9, 1f, 1, 2, 7, false);
+                maps.add(mk(10, Mapping.CC, 74, 1.0f, 0.4f));
+                break;
+            case 6: // Expresivo
                 maps.add(mk(0, Mapping.PB, 0, 1.2f, 0.35f));
                 maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 maps.add(mk(5, Mapping.CC, 1, 2.5f, 0.5f));
+                break;
+            case 7: // Vibrato
+                maps.add(mk(5, Mapping.CC, 1, 2.5f, 0.5f));
+                maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
+                break;
+            case 8: // Voz
+                maps.add(mk(11, Mapping.CC, 11, 1.5f, 0.3f));
+                maps.add(mk(12, Mapping.CC, 74, 1.0f, 0.4f));
+                break;
+            case 9: // Cámara
+                maps.add(mk(9, Mapping.CC, 74, 1.0f, 0.4f));
+                maps.add(mk(10, Mapping.CC, 1, 1.0f, 0.4f));
+                break;
+            default: // Arpa
+                mel(Melody.STEP, 0, 2f, 0, 2, Melody.GATE_ALWAYS, true);
+                maps.add(mk(1, Mapping.CC, 74, 1.2f, 0.3f));
                 break;
         }
     }
@@ -257,6 +307,12 @@ public class MainActivity extends Activity {
             JSONArray a = new JSONArray(s);
             maps.clear();
             for (int i = 0; i < a.length(); i++) maps.add(Mapping.fromJson(a.getJSONObject(i)));
+            String ms = prefs().getString("melody", null);
+            if (ms != null) {
+                melody.fromJson(new JSONObject(ms));
+            } else {
+                prefs().edit().putInt("scene", -1).apply(); // old save: no scene highlighted
+            }
         } catch (Exception e) {
             defaults();
         }
@@ -265,7 +321,8 @@ public class MainActivity extends Activity {
     private void saveMaps() {
         JSONArray a = new JSONArray();
         for (Mapping m : maps) a.put(m.toJson());
-        prefs().edit().putString("maps", a.toString()).putBoolean("camFront", camFront).apply();
+        prefs().edit().putString("maps", a.toString()).putString("melody", melody.toJson().toString())
+                .putBoolean("camFront", camFront).apply();
     }
 
     private void changed() {
@@ -281,6 +338,17 @@ public class MainActivity extends Activity {
             else if (m.source <= 10) cam = true;
             else mic = true;
         }
+        if (melody.enabled) {
+            int[] used = {melody.pitchSrc, melody.gateSrc};
+            for (int src : used) {
+                if (src < 0) continue;
+                if (src <= 6) motion = true;
+                else if (src <= 10) cam = true;
+                else mic = true;
+            }
+            if (melody.dynVel || melody.mode == Melody.ARP || melody.mode == Melody.SHAKE) motion = true;
+        }
+        if (camBox != null) camBox.setVisibility(cam ? View.VISIBLE : View.GONE);
         eng.setMotion(motion);
         eng.setCamera(cam, camFront);
         eng.setPassthrough(prefs().getBoolean("micPass", false)
@@ -309,6 +377,7 @@ public class MainActivity extends Activity {
 
     private void process() {
         long now = SystemClock.uptimeMillis();
+        melody.update(eng.v, now, hub);
         for (Mapping m : maps) {
             if (!m.enabled) continue;
             boolean muted = solo != null && solo != m;
@@ -381,6 +450,7 @@ public class MainActivity extends Activity {
     }
 
     private void releaseHeldNotes() {
+        melody.stop(hub);
         for (int key : new ArrayList<>(held)) {
             hub.send(new byte[]{(byte) (0x80 | (key >> 8)), (byte) (key & 0xFF), 0});
         }
@@ -393,6 +463,28 @@ public class MainActivity extends Activity {
             float shown = m.type == Mapping.NOTE ? m.lastRaw : m.filtered;
             bars.get(i).setProgress(Math.round(clamp01(shown) * 1000f));
             barLabels.get(i).setText(liveText(m));
+        }
+        if (noteView != null) {
+            if (melody.enabled) {
+                boolean snd = melody.isSounding();
+                int note = snd ? melody.shown : melody.noteForDegree(melody.curDeg);
+                noteView.setText((snd ? "♪ " : "· ") + Melody.noteLabel(note));
+                noteView.setTextColor(snd ? 0xFF7CE0B0 : 0xFF8A8AA0);
+                ladder.set(melody.degrees(), melody.curDeg, snd);
+            } else {
+                noteView.setText("Notas apagadas");
+                noteView.setTextColor(0xFF8A8AA0);
+            }
+            if (camBox.getVisibility() == View.VISIBLE) {
+                if (melody.enabled && melody.pitchSrc == 9) {
+                    camView.setGuides(melody.degrees(), true, melody.curDeg);
+                } else if (melody.enabled && melody.pitchSrc == 10) {
+                    camView.setGuides(melody.degrees(), false, melody.curDeg);
+                } else {
+                    camView.setGuides(0, true, -1);
+                }
+                camView.invalidate();
+            }
         }
         for (int i = 0; i < playBars.size(); i++) {
             Mapping m = playMaps.get(i);
@@ -465,10 +557,11 @@ public class MainActivity extends Activity {
         root.addView(rowA);
 
         // ---- scenes
-        root.addView(label("ESCENAS · elige cómo te expresas"));
         sceneBtns.clear();
         LinearLayout sr = null;
         for (int i = 0; i < SCENES.length; i++) {
+            if (i == 0) root.addView(label("ESCENAS CON NOTAS · el teléfono toca la melodía"));
+            if (i == FIRST_EXPRESSIVE) root.addView(label("ESCENAS DE EXPRESIÓN · el sintetizador toca, tú lo moldeas"));
             if (i % 3 == 0) {
                 sr = new LinearLayout(this);
                 root.addView(sr);
@@ -485,6 +578,80 @@ public class MainActivity extends Activity {
         sceneHelp.setTextColor(0xFFB8B8C8);
         sceneHelp.setPadding(dp(4), dp(6), dp(4), 0);
         root.addView(sceneHelp);
+
+        // ---- melody card
+        root.addView(label("MELODÍA"));
+        LinearLayout mbox = new LinearLayout(this);
+        mbox.setOrientation(LinearLayout.VERTICAL);
+        android.graphics.drawable.GradientDrawable mbg = new android.graphics.drawable.GradientDrawable();
+        mbg.setColor(0xFF1E1E26);
+        mbg.setCornerRadius(dp(12));
+        mbox.setBackground(mbg);
+        mbox.setPadding(dp(12), dp(8), dp(12), dp(12));
+        LinearLayout mhead = new LinearLayout(this);
+        mhead.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        melodyOn = new CheckBox(this);
+        melodyOn.setText("Tocar notas");
+        melodyOn.setTextColor(0xFFFFFFFF);
+        melodyOn.setOnCheckedChangeListener((b, c) -> {
+            if (c == melody.enabled) return;
+            melody.enabled = c;
+            if (!c) melody.stop(hub);
+            changed();
+            updateStatus();
+        });
+        Button mset = new Button(this);
+        mset.setText("Ajustes ✎");
+        mset.setAllCaps(false);
+        mset.setOnClickListener(v -> showMelodySettings());
+        mhead.addView(melodyOn, weight());
+        mhead.addView(mset);
+        mbox.addView(mhead);
+        noteView = new TextView(this);
+        noteView.setTextSize(34);
+        noteView.setTextColor(0xFFFFFFFF);
+        noteView.setPadding(0, dp(4), 0, dp(4));
+        mbox.addView(noteView);
+        ladder = new LadderView(this);
+        mbox.addView(ladder, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)));
+        padView = new TextView(this);
+        padView.setText("MANTÉN PULSADO PARA TOCAR");
+        padView.setTextSize(16);
+        padView.setTextColor(0xFFFFFFFF);
+        padView.setGravity(android.view.Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable pbg = new android.graphics.drawable.GradientDrawable();
+        pbg.setColor(0xFF2D5A47);
+        pbg.setCornerRadius(dp(12));
+        padView.setBackground(pbg);
+        padView.setOnTouchListener((v, ev) -> {
+            int act = ev.getActionMasked();
+            if (act == android.view.MotionEvent.ACTION_DOWN) {
+                melody.touch = true;
+            } else if (act == android.view.MotionEvent.ACTION_UP
+                    || act == android.view.MotionEvent.ACTION_CANCEL) {
+                melody.touch = false;
+            }
+            return true;
+        });
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(110));
+        plp.topMargin = dp(10);
+        mbox.addView(padView, plp);
+        root.addView(mbox);
+
+        // ---- camera view
+        camBox = new LinearLayout(this);
+        camBox.setOrientation(LinearLayout.VERTICAL);
+        camBox.addView(label("CÁMARA · lo que ve y sigue la app"));
+        camView = new CamView(this, eng);
+        camBox.addView(camView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260)));
+        camCaption = new TextView(this);
+        camCaption.setTextSize(12);
+        camCaption.setTextColor(0xFF8A8AA0);
+        camCaption.setPadding(dp(4), dp(4), dp(4), 0);
+        camBox.addView(camCaption);
+        camBox.setVisibility(View.GONE);
+        root.addView(camBox);
 
         // ---- gestures
         root.addView(label("GESTOS → SONIDO · toca uno para cambiar qué controla"));
@@ -597,10 +764,10 @@ public class MainActivity extends Activity {
         advBox.addView(listBox);
 
         Button reset = new Button(this);
-        reset.setText("Restaurar escena «Expresivo»");
+        reset.setText("Restaurar escena «Arpa»");
         reset.setOnClickListener(v -> new AlertDialog.Builder(this)
                 .setTitle("¿Restaurar?")
-                .setMessage("Tus gestos actuales se reemplazan por la escena Expresivo.")
+                .setMessage("Tus gestos y notas actuales se reemplazan por la escena Arpa.")
                 .setPositiveButton("Restaurar", (d, w) -> applyScene(0))
                 .setNegativeButton("Cancelar", null)
                 .show());
@@ -608,6 +775,112 @@ public class MainActivity extends Activity {
 
         setContentView(sv);
         rebuild();
+    }
+
+    private static int indexOf(int[] arr, int val) {
+        for (int i = 0; i < arr.length; i++) if (arr[i] == val) return i;
+        return 0;
+    }
+
+    private TextView dlgLabel(String t) {
+        TextView v = new TextView(this);
+        v.setText(t);
+        v.setTextSize(13);
+        v.setTextColor(0xFFB8B8C8);
+        v.setPadding(0, dp(12), 0, 0);
+        return v;
+    }
+
+    private void showMelodySettings() {
+        ScrollView sv = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(6), dp(18), dp(6));
+        sv.addView(box);
+
+        box.addView(dlgLabel("Cómo suenan las notas"));
+        box.addView(spinner(Melody.MODE_NAMES, melody.mode, pos -> {
+            melody.stop(hub);
+            melody.mode = pos;
+            applyNeeds();
+        }));
+
+        String[] pitchNames = new String[PITCH_SRCS.length];
+        for (int i = 0; i < pitchNames.length; i++) pitchNames[i] = GESTURES[PITCH_SRCS[i]];
+        box.addView(dlgLabel("Qué elige la nota"));
+        box.addView(spinner(pitchNames, indexOf(PITCH_SRCS, melody.pitchSrc), pos -> {
+            melody.stop(hub);
+            melody.pitchSrc = PITCH_SRCS[pos];
+            melody.sens = SensorEngine.GAIN_MODE[melody.pitchSrc] == 1 ? 2f : 1f;
+            if (melody.gateSrc >= 0) melody.gateSrc = gateForMoving();
+            applyNeeds();
+        }));
+
+        box.addView(dlgLabel("Escala"));
+        box.addView(spinner(Melody.SCALE_NAMES, melody.scale, pos -> melody.scale = pos));
+        box.addView(dlgLabel("Tono (nota base)"));
+        box.addView(spinner(Melody.ROOT_NAMES, melody.root, pos -> {
+            melody.stop(hub);
+            melody.root = pos;
+        }));
+        box.addView(dlgLabel("Registro"));
+        box.addView(spinner(Melody.LOW_NAMES, melody.low, pos -> {
+            melody.stop(hub);
+            melody.low = pos;
+        }));
+        slider(box, "Octavas", 1, 4, melody.octaves, n -> "" + n, n -> melody.octaves = n);
+        slider(box, "Sensibilidad (cuánto hay que inclinar)", 5, 60, Math.round(melody.sens * 10f),
+                p -> String.format("%.1fx", p / 10f), p -> melody.sens = p / 10f);
+
+        box.addView(dlgLabel("Cuándo suena"));
+        int gi = melody.gateSrc == Melody.GATE_ALWAYS ? 0 : (melody.gateSrc == Melody.GATE_TOUCH ? 2 : 1);
+        box.addView(spinner(GATE_NAMES, gi, pos -> {
+            melody.stop(hub);
+            melody.gateSrc = pos == 0 ? Melody.GATE_ALWAYS
+                    : (pos == 2 ? Melody.GATE_TOUCH : gateForMoving());
+            applyNeeds();
+            updateStatus();
+        }));
+
+        CheckBox dyn = new CheckBox(this);
+        dyn.setText("Más fuerte si te mueves más fuerte");
+        dyn.setTextColor(0xFFFFFFFF);
+        dyn.setChecked(melody.dynVel);
+        dyn.setOnCheckedChangeListener((b, c) -> {
+            melody.dynVel = c;
+            applyNeeds();
+        });
+        box.addView(dyn);
+
+        box.addView(dlgLabel("Modo Ritmo: figura"));
+        box.addView(spinner(DIV_NAMES, melody.div, pos -> melody.div = pos));
+        slider(box, "Modo Ritmo: tempo", 40, 220, melody.bpm, n -> n + " bpm", n -> melody.bpm = n);
+
+        String[] chs = new String[16];
+        for (int i = 0; i < 16; i++) chs[i] = "Canal " + (i + 1);
+        box.addView(dlgLabel("Canal MIDI de las notas"));
+        box.addView(spinner(chs, melody.channel, pos -> {
+            melody.stop(hub);
+            melody.channel = pos;
+        }));
+
+        new AlertDialog.Builder(this)
+                .setTitle("Ajustes de melodía")
+                .setView(sv)
+                .setPositiveButton("Listo", null)
+                .setOnDismissListener(d -> {
+                    saveMaps();
+                    applyNeeds();
+                    updateStatus();
+                })
+                .show();
+    }
+
+    /** Sensor used for "only while moving", depending on what picks the note. */
+    private int gateForMoving() {
+        if (melody.pitchSrc >= 9 && melody.pitchSrc <= 10) return 7;
+        if (melody.pitchSrc >= 11) return 11;
+        return 5;
     }
 
     private void testNote() {
@@ -1007,6 +1280,13 @@ public class MainActivity extends Activity {
             sceneBtns.get(i).setTextColor(i == sc ? 0xFF7CE0B0 : 0xFFFFFFFF);
         }
         sceneHelp.setText(sc >= 0 && sc < SCENE_HELP.length ? SCENE_HELP[sc] : "");
+        if (melodyOn.isChecked() != melody.enabled) melodyOn.setChecked(melody.enabled);
+        padView.setVisibility(melody.enabled && melody.gateSrc == Melody.GATE_TOUCH
+                ? View.VISIBLE : View.GONE);
+        ladder.setVisibility(melody.enabled ? View.VISIBLE : View.GONE);
+        boolean camPitch = melody.enabled && (melody.pitchSrc == 9 || melody.pitchSrc == 10);
+        camCaption.setText("Verde = lo que la cámara ve moverse · anillo = tu mano"
+                + (camPitch ? " · las franjas son las notas de la escala" : " · X e Y mueven los gestos de cámara"));
 
         StringBuilder sb = new StringBuilder();
         sb.append("Bluetooth MIDI (modo computadora): ").append(hub.ble.status);
