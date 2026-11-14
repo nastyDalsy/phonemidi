@@ -37,11 +37,16 @@ Or open the folder in Android Studio and press Run.
   I-V of the scale, fist = silence.
 - **Ajustes avanzados** has the full mapping editor, camera choice, Solo for MIDI learn,
   "visible por Bluetooth" (phone shows up as a MIDI device for Ableton) and mic -> audio output.
-- Keep the app open with the screen on (it stops sensors when backgrounded).
+- **Pantalla apagada / otras apps**: turn it on and PhoneMIDI keeps playing with the screen
+  off, in other apps or while recording video (a notification shows it; stop it there).
+  Motion scenes always work. The microphone gets silence while another app records audio,
+  and the camera scenes pause while another app uses the camera (they resume when it is free).
 
 ## Project layout
     app/src/main/java/com/dalsy/phonemidi/
-      MainActivity.java   UI + mapping engine (sensor value -> MIDI message)
+      MainActivity.java   UI
+      Core.java           playing engine (sensors -> MIDI), independent of the screen
+      PlayService.java    foreground service: keeps playing with the screen off / in other apps
       SensorEngine.java   accelerometer, gyro, camera motion, microphone -> 0..1 values
       MidiHub.java        sends every message to BLE + any connected MIDI outputs
       BlePeripheral.java  makes the phone a standard BLE MIDI device

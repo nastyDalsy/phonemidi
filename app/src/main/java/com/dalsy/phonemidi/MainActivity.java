@@ -115,15 +115,15 @@ public class MainActivity extends Activity {
 
     private SensorEngine eng;
     private MidiHub hub;
-    private final ArrayList<Mapping> maps = new ArrayList<>();
+    private Core core;
+    private ArrayList<Mapping> maps;
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final HashSet<Integer> held = new HashSet<>();
 
     private LinearLayout listBox;
     private TextView status;
-    private Button btBtn, camBtn, passBtn, advToggle;
+    private Button btBtn, camBtn, passBtn, advToggle, bgBtn;
     private LinearLayout playBox, advBox, camBox;
-    private final Melody melody = new Melody();
+    private Melody melody;
     private TextView noteView, padView;
     private LadderView ladder;
     private CheckBox melodyOn;
@@ -139,7 +139,6 @@ public class MainActivity extends Activity {
     private final ArrayList<TextView> barLabels = new ArrayList<>();
 
     /** When set, only this mapping sends MIDI (makes DAW "MIDI learn" easy). Not saved. */
-    private Mapping solo = null;
 
     private boolean camFront = true;
     private int tickCount = 0;
@@ -151,9 +150,18 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        eng = new SensorEngine(this);
-        hub = new MidiHub(this, () -> ui.post(this::updateStatus));
-        loadMaps();
+        core = Core.get(this);
+        eng = core.eng;
+        hub = core.hub;
+        maps = core.maps;
+        melody = core.melody;
+        core.onHubChanged = this::updateStatus;
+        if (!core.loaded) {
+            loadMaps();
+            core.loaded = true;
+        } else {
+            camFront = prefs().getBoolean("camFront", true);
+        }
         buildUi();
         askPerms();
         autoStartBle();
@@ -168,9 +176,13 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        core.onHubChanged = this::updateStatus;
+        core.start();
         applyNeeds();
+        if (bgOn()) startPlayService();
         ticking = true;
         ui.post(tick);
+        updateStatus();
     }
 
     @Override
@@ -178,15 +190,49 @@ public class MainActivity extends Activity {
         super.onPause();
         ticking = false;
         ui.removeCallbacks(tick);
-        eng.stopAll();
-        releaseHeldNotes();
         saveMaps();
+        melody.touch = false;
+        // With "keep playing" on, the engine keeps running in the background.
+        if (!bgOn()) core.stop();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        hub.shutdown();
+        if (core.onHubChanged != null) core.onHubChanged = null;
+        if (isFinishing() && !bgOn()) Core.shutdown();
+    }
+
+    // ------------------------------------------------------------ background playing
+
+    private boolean bgOn() {
+        return prefs().getBoolean("bg", false);
+    }
+
+    private void startPlayService() {
+        try {
+            startForegroundService(new android.content.Intent(this, PlayService.class));
+        } catch (Exception e) {
+            Toast.makeText(this, "No se pudo activar el modo segundo plano: " + e.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void toggleBackground() {
+        boolean on = !bgOn();
+        prefs().edit().putBoolean("bg", on).apply();
+        if (on) {
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 2);
+            }
+            startPlayService();
+            Toast.makeText(this, "Sigue sonando con la pantalla apagada o en otras apps. "
+                    + "Para pararlo usa la notificación.", Toast.LENGTH_LONG).show();
+        } else {
+            stopService(new android.content.Intent(this, PlayService.class));
+        }
+        updateStatus();
     }
 
     // ------------------------------------------------------------ permissions
@@ -311,7 +357,7 @@ public class MainActivity extends Activity {
 
     private void applyScene(int i) {
         releaseHeldNotes();
-        solo = null;
+        core.solo = null;
         fillScene(i);
         prefs().edit().putInt("scene", i).apply();
         saveMaps();
@@ -370,6 +416,8 @@ public class MainActivity extends Activity {
         if (camBox != null) camBox.setVisibility(cam ? View.VISIBLE : View.GONE);
         eng.setMotion(need[0]);
         eng.setHands(need[3]);
+        core.needCam = cam;
+        core.camFront = camFront;
         eng.setCamera(cam, camFront);
         boolean mic = need[2];
         eng.setPassthrough(prefs().getBoolean("micPass", false)
@@ -384,7 +432,6 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             if (!ticking) return;
-            process();
             tickCount++;
             if (tickCount % 4 == 0) updateBars();
             if (tickCount % 60 == 0) updateStatus();
@@ -394,63 +441,6 @@ public class MainActivity extends Activity {
 
     private static float clamp01(float x) {
         return x < 0f ? 0f : (x > 1f ? 1f : x);
-    }
-
-    private void process() {
-        long now = SystemClock.uptimeMillis();
-        melody.update(eng.v, now, hub);
-        for (Mapping m : maps) {
-            if (!m.enabled) continue;
-            boolean muted = solo != null && solo != m;
-            float raw = eng.v[m.source];
-            switch (SensorEngine.GAIN_MODE[m.source]) {
-                case 0: raw = raw * m.sens; break;
-                case 1: raw = 0.5f + (raw - 0.5f) * m.sens; break;
-                default: break;
-            }
-            raw = clamp01(raw);
-            m.lastRaw = raw;
-            m.filtered += (1f - m.smooth) * (raw - m.filtered);
-
-            if (m.type == Mapping.NOTE) {
-                if (!m.above && raw >= m.threshold && now - m.lastTrig >= 100) {
-                    m.above = true;
-                    m.lastTrig = now;
-                    if (muted) continue;
-                    int vel = Math.max(1, Math.min(127, 40 + Math.round(raw * 87f)));
-                    final int ch = m.channel, nn = m.number;
-                    hub.send(new byte[]{(byte) (0x90 | ch), (byte) nn, (byte) vel});
-                    final int key = (ch << 8) | nn;
-                    held.add(key);
-                    ui.postDelayed(() -> {
-                        if (held.remove(key)) {
-                            hub.send(new byte[]{(byte) (0x80 | ch), (byte) nn, 0});
-                        }
-                    }, 120);
-                } else if (m.above && raw < m.threshold * 0.6f) {
-                    m.above = false;
-                }
-                continue;
-            }
-
-            if (muted) continue;
-            float val = m.outMin + m.filtered * (m.outMax - m.outMin);
-            val = Math.max(0f, Math.min(127f, val));
-            if (m.type == Mapping.CC) {
-                int iv = Math.round(val);
-                if (iv != m.lastSent) {
-                    m.lastSent = iv;
-                    hub.send(new byte[]{(byte) (0xB0 | m.channel), (byte) m.number, (byte) iv});
-                }
-            } else {
-                int pb = Math.round(val / 127f * 16383f);
-                if (pb != m.lastSent) {
-                    m.lastSent = pb;
-                    hub.send(new byte[]{(byte) (0xE0 | m.channel), (byte) (pb & 0x7F),
-                            (byte) ((pb >> 7) & 0x7F)});
-                }
-            }
-        }
     }
 
     /** All notes off + all sound off on every channel, for stuck notes. */
@@ -464,18 +454,14 @@ public class MainActivity extends Activity {
     }
 
     private void setSolo(Mapping m) {
-        solo = (solo == m) ? null : m;
+        core.solo = (core.solo == m) ? null : m;
         for (Mapping x : maps) x.lastSent = -1; // re-send current values
         rebuild();
         updateStatus();
     }
 
     private void releaseHeldNotes() {
-        melody.stop(hub);
-        for (int key : new ArrayList<>(held)) {
-            hub.send(new byte[]{(byte) (0x80 | (key >> 8)), (byte) (key & 0xFF), 0});
-        }
-        held.clear();
+        core.releaseHeldNotes();
     }
 
     private void updateBars() {
@@ -523,7 +509,7 @@ public class MainActivity extends Activity {
     private String liveText(Mapping m) {
         String ch = "ch " + (m.channel + 1);
         if (!m.enabled) return "off";
-        String muted = (solo != null && solo != m) ? "  (muted by solo)" : "";
+        String muted = (core.solo != null && core.solo != m) ? "  (silenciado por solo)" : "";
         if (m.type == Mapping.NOTE) {
             return "Note " + noteName(m.number) + " · " + ch + (m.above ? "  ● HIT" : "") + muted;
         }
@@ -581,6 +567,11 @@ public class MainActivity extends Activity {
         rowA.addView(conn, weight());
         rowA.addView(test, weight());
         root.addView(rowA);
+
+        bgBtn = new Button(this);
+        bgBtn.setAllCaps(false);
+        bgBtn.setOnClickListener(v -> toggleBackground());
+        root.addView(bgBtn);
 
         // ---- scenes
         sceneBtns.clear();
@@ -1159,7 +1150,7 @@ public class MainActivity extends Activity {
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
         bg.setColor(0xFF1E1E26);
         bg.setCornerRadius(dp(10));
-        if (solo == m) bg.setStroke(dp(2), 0xFFFFB020);
+        if (core.solo == m) bg.setStroke(dp(2), 0xFFFFB020);
         card.setBackground(bg);
         card.setPadding(dp(12), dp(8), dp(12), dp(12));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
@@ -1189,7 +1180,7 @@ public class MainActivity extends Activity {
                 .setTitle("¿Quitar este mapeo?")
                 .setMessage(GESTURES[m.source])
                 .setPositiveButton("Quitar", (d, w) -> {
-                    if (solo == m) solo = null;
+                    if (core.solo == m) core.solo = null;
                     maps.remove(m);
                     saveMaps();
                     rebuild();
@@ -1199,8 +1190,8 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Cancelar", null)
                 .show());
         Button soloBtn = new Button(this);
-        soloBtn.setText(solo == m ? "SOLO" : "Solo");
-        if (solo == m) soloBtn.setTextColor(0xFFFFB020);
+        soloBtn.setText(core.solo == m ? "SOLO" : "Solo");
+        if (core.solo == m) soloBtn.setTextColor(0xFFFFB020);
         soloBtn.setOnClickListener(v -> setSolo(m));
         for (Button bt : new Button[]{soloBtn, del}) {
             bt.setMinWidth(0);
@@ -1303,6 +1294,9 @@ public class MainActivity extends Activity {
             connLine.setText("○ Sin conectar — pulsa «Conectar FM-1 / USB»");
             connLine.setTextColor(0xFFFF8A80);
         }
+        bgBtn.setText(bgOn() ? "Pantalla apagada / otras apps: SIGUE SONANDO"
+                : "Pantalla apagada / otras apps: se detiene (toca para que siga)");
+        bgBtn.setTextColor(bgOn() ? 0xFF7CE0B0 : 0xFFFFFFFF);
         int sc = prefs().getInt("scene", 0);
         for (int i = 0; i < sceneBtns.size(); i++) {
             sceneBtns.get(i).setText(SCENES[i]);
@@ -1331,8 +1325,8 @@ public class MainActivity extends Activity {
         } else {
             for (MidiHub.Out o : hub.outs) sb.append("\nSalida directa → ").append(o.name);
         }
-        if (solo != null) {
-            sb.append("\nSOLO: solo '").append(GESTURES[solo.source]).append("' envía MIDI");
+        if (core.solo != null) {
+            sb.append("\nSOLO: solo '").append(GESTURES[core.solo.source]).append("' envía MIDI");
         }
         status.setText(sb.toString());
         btBtn.setText(hub.ble.running ? "Visible por Bluetooth: SÍ" : "Visible por Bluetooth: NO");
