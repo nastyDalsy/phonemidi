@@ -49,6 +49,7 @@
   .row > * { flex: 1; min-width: 0; }
   .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .modes button { text-align: left; padding: 8px 10px; }
+  .modes button small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.25; margin-top: 2px; }
   .modes button.sel { border-color: var(--accent); color: var(--accent); background: #1d2a25; }
   .help { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
   .check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; margin: 8px 0 0; }
@@ -101,8 +102,24 @@
     </div>
 
     <div class="card">
+      <h2>Presets · estilos</h2>
+      <div class="modes" id="presets"></div>
+    </div>
+
+    <div class="card">
       <h2>Modo</h2>
       <div class="modes" id="modes"></div>
+      <div id="hexOpts" style="display:none">
+        <label for="hexLayout">Distribución de los hexágonos</label>
+        <select id="hexLayout"></select>
+        <label for="hexRows">Tamaño: <span id="hexRowsV"></span></label>
+        <input type="range" id="hexRows" min="3" max="9" value="5">
+      </div>
+      <div id="omniOpts" style="display:none">
+        <label class="check"><input type="checkbox" id="pad" checked> Al pulsar un acorde suena como pad</label>
+        <label for="strings">Cuerdas en la placa: <span id="stringsV"></span></label>
+        <input type="range" id="strings" min="8" max="20" value="13">
+      </div>
     </div>
 
     <div class="card">
@@ -155,7 +172,9 @@ const SCALES = [
   ['Mayor', [0, 2, 4, 5, 7, 9, 11]], ['Menor natural', [0, 2, 3, 5, 7, 8, 10]],
   ['Dórica', [0, 2, 3, 5, 7, 9, 10]], ['Frigia', [0, 1, 3, 5, 7, 8, 10]],
   ['Menor armónica', [0, 2, 3, 5, 7, 8, 11]], ['Blues', [0, 3, 5, 6, 7, 10]],
-  ['Tonos enteros', [0, 2, 4, 6, 8, 10]], ['Cromática', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]];
+  ['Tonos enteros', [0, 2, 4, 6, 8, 10]], ['Cromática', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]],
+  ['Lidia', [0, 2, 4, 6, 7, 9, 11]], ['Mixolidia', [0, 2, 4, 5, 7, 9, 10]],
+  ['Hirajoshi (japonesa)', [0, 2, 3, 7, 8]], ['Árabe (doble armónica)', [0, 1, 4, 5, 7, 8, 11]]];
 const ROOTS = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
 const REGS = [['Grave', 36], ['Medio', 48], ['Agudo', 60], ['Muy agudo', 72]];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
@@ -164,6 +183,8 @@ const MODES = {
   chords: ['Acordes', 'Levanta 1 a 5 dedos: acordes I a V de la escala. El puño calla. Sube o baja la mano para el brillo; la otra mano da vibrato.'],
   harp: ['Arpa de aire', 'Pasa la mano de lado a lado: cada franja suena una nota. Más rápido = más fuerte. Gira la muñeca para doblar.'],
   theremin: ['Theremin', 'Mientras se vea la mano suena una nota que sigue su posición (dentro de la escala). La altura da brillo, la otra mano vibrato. Cierra el puño para callar.'],
+  omni: ['Omnichord', 'Mano izquierda: pon el índice sobre un acorde y haz pinza para elegirlo (si el pad está activo, suena mientras lo mantienes). Mano derecha: pasa el índice arriba y abajo por la placa de cuerdas para rasguear el acorde elegido. Más rápido = más fuerte.'],
+  hex: ['Hexágonos', 'Cada hexágono es una nota. Pon el índice encima y junta pulgar e índice para tocarla; desliza con la pinza cerrada para pasar de nota en nota. Pulgar + dedo medio toca el acorde de esa nota. Cada mano toca su propia voz.'],
   expr: ['Expresión', 'Sin notas: tú tocas el sintetizador y la mano lo moldea. Girar la muñeca dobla, abrir la mano da brillo, la altura da vibrato.'],
 };
 const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
@@ -175,7 +196,8 @@ const noteName = (n) => n < 0 ? '–' : ROOTS[n % 12] + (Math.floor(n / 12) - 1)
 
 // ---------------------------------------------------------------- settings
 const S = { mode: 'pro', out: 'all', ch: 0, vel: 100, scale: 0, root: 0, reg: 1, oct: 2, hand: 'right',
-  smooth: 25, pinch: 35, width: 76, bendOn: true, bendDeg: 45, ccAOn: true, ccA: 74, ccBOn: true, ccB: 1 };
+  smooth: 25, pinch: 35, width: 76, bendOn: true, bendDeg: 45, ccAOn: true, ccA: 74, ccBOn: true, ccB: 1,
+  hexLayout: 'harm', hexRows: 5, pad: true, strings: 13 };
 try { Object.assign(S, JSON.parse(localStorage.getItem('pm-manos') || '{}')); } catch (e) { /* private mode */ }
 const save = () => { try { localStorage.setItem('pm-manos', JSON.stringify(S)); } catch (e) { /* ignore */ } };
 
@@ -190,23 +212,37 @@ fill($('root'), ROOTS.map((r, i) => [r, i]), S.root);
 fill($('reg'), REGS.map((r, i) => [r[0], i]), S.reg);
 fill($('oct'), [1, 2, 3, 4].map((o) => [String(o), o]), S.oct);
 $('hand').value = S.hand;
-for (const k of ['vel', 'smooth', 'pinch', 'width', 'bendDeg', 'ccA', 'ccB']) $(k).value = S[k];
-for (const k of ['bendOn', 'ccAOn', 'ccBOn']) $(k).checked = S[k];
+const HEX_LAYOUTS = {
+  harm: ['Tabla armónica · los acordes son triángulos', 1, -3, 'semi'],
+  wicki: ['Wicki-Hayden · cómoda para melodías', 2, -5, 'semi'],
+  deg: ['Solo notas de la escala', 1, -3, 'deg'],
+};
+fill($('hexLayout'), Object.entries(HEX_LAYOUTS).map(([k, v]) => [v[0], k]), S.hexLayout);
+const NUM_KEYS = ['vel', 'smooth', 'pinch', 'width', 'bendDeg', 'ccA', 'ccB', 'hexRows', 'strings'];
+const BOOL_KEYS = ['bendOn', 'ccAOn', 'ccBOn', 'pad'];
+function syncUI() {
+  for (const k of ['ch', 'scale', 'root', 'reg', 'oct', 'hand', 'hexLayout']) $(k).value = String(S[k]);
+  for (const k of NUM_KEYS) $(k).value = S[k];
+  for (const k of BOOL_KEYS) $(k).checked = S[k];
+  labels();
+}
 
 function labels() {
   $('smoothV').textContent = S.smooth < 15 ? 'mínimo (más rápido)' : (S.smooth > 60 ? 'alto (más estable)' : 'medio');
   $('pinchV').textContent = S.pinch < 30 ? 'hay que juntar mucho' : (S.pinch > 45 ? 'muy sensible' : 'normal');
   $('widthV').textContent = S.width + '% de la imagen';
   $('bendDegV').textContent = S.bendDeg + '°';
+  $('hexRowsV').textContent = S.hexRows + ' filas';
+  $('stringsV').textContent = S.strings;
 }
-labels();
+syncUI();
 
 const modesEl = $('modes');
 for (const [k, [name]] of Object.entries(MODES)) {
   const b = document.createElement('button');
   b.textContent = name; b.dataset.mode = k;
   b.onclick = () => {
-    allOff(); S.mode = k;
+    allOff(); S.mode = k; S.preset = '';
     // chords need a 7-note scale to make real triads
     if (k === 'chords' && SCALES[S.scale][1].length !== 7) { S.scale = 2; $('scale').value = '2'; }
     if (k === 'chords' && S.oct > 1) { S.oct = 1; $('oct').value = '1'; }
@@ -217,6 +253,37 @@ for (const [k, [name]] of Object.entries(MODES)) {
 function showMode() {
   for (const b of modesEl.children) b.classList.toggle('sel', b.dataset.mode === S.mode);
   $('modeHelp').textContent = MODES[S.mode][1];
+  $('hexOpts').style.display = S.mode === 'hex' ? '' : 'none';
+  $('omniOpts').style.display = S.mode === 'omni' ? '' : 'none';
+  for (const b of $('presets').children) b.classList.toggle('sel', b.dataset.preset === S.preset);
+}
+
+// Presets: a playing style = mode + scale + key + feel
+const sc = (name) => SCALES.findIndex((x) => x[0].startsWith(name));
+const PRESETS = [
+  ['Omnichord', 'acordes + rasgueo', { mode: 'omni', root: 0, reg: 1, pad: true, strings: 13 }],
+  ['Omnichord lo-fi', 'en Fa, cuerdas graves', { mode: 'omni', root: 5, reg: 0, pad: true, strings: 16 }],
+  ['Hexágonos', 'tabla armónica en Do', { mode: 'hex', hexLayout: 'harm', root: 0, reg: 1, hexRows: 5, scale: sc('Mayor') }],
+  ['Hex melodía', 'Wicki-Hayden, filas grandes', { mode: 'hex', hexLayout: 'wicki', root: 0, reg: 1, hexRows: 4, scale: sc('Mayor') }],
+  ['Hex modal', 'solo escala, Dórica en Re', { mode: 'hex', hexLayout: 'deg', root: 2, reg: 1, hexRows: 5, scale: sc('Dórica') }],
+  ['Blues', 'pinza en La blues, bends cortos', { mode: 'pro', scale: sc('Blues'), root: 9, reg: 1, oct: 2, bendDeg: 30, bendOn: true }],
+  ['Flamenco', 'Frigia en Mi', { mode: 'pro', scale: sc('Frigia'), root: 4, reg: 1, oct: 2, bendDeg: 40 }],
+  ['Árabe', 'doble armónica en Re', { mode: 'pro', scale: sc('Árabe'), root: 2, reg: 1, oct: 2, bendDeg: 35 }],
+  ['Koto', 'arpa de aire, Hirajoshi en La', { mode: 'harp', scale: sc('Hirajoshi'), root: 9, reg: 2, oct: 2 }],
+  ['Arpa celta', 'Dórica en Re, agudo', { mode: 'harp', scale: sc('Dórica'), root: 2, reg: 2, oct: 2 }],
+  ['Pad ambient', 'acordes con dedos en Re', { mode: 'chords', scale: sc('Mayor'), root: 2, reg: 0, oct: 1, smooth: 50 }],
+  ['Theremin clásico', 'cromático, muy fluido', { mode: 'theremin', scale: sc('Cromática'), root: 0, reg: 2, oct: 2, smooth: 10, bendDeg: 25 }],
+];
+for (const [name, sub, cfg] of PRESETS) {
+  const b = document.createElement('button');
+  b.innerHTML = `${name}<small>${sub}</small>`;
+  b.dataset.preset = name;
+  b.onclick = () => {
+    allOff();
+    Object.assign(S, cfg, { preset: name });
+    save(); syncUI(); showMode();
+  };
+  $('presets').appendChild(b);
 }
 showMode();
 
@@ -228,8 +295,8 @@ function bind(id, num) {
     labels(); save();
   });
 }
-['ch', 'vel', 'scale', 'root', 'reg', 'oct', 'smooth', 'pinch', 'width', 'bendDeg', 'ccA', 'ccB'].forEach((k) => bind(k, true));
-['out', 'hand', 'bendOn', 'ccAOn', 'ccBOn'].forEach((k) => bind(k, false));
+['ch', 'scale', 'root', 'reg', 'oct', ...NUM_KEYS].forEach((k) => bind(k, true));
+['out', 'hand', 'hexLayout', ...BOOL_KEYS].forEach((k) => bind(k, false));
 
 // ---------------------------------------------------------------- MIDI
 let midi = null;
@@ -268,14 +335,29 @@ function noteFor(d) {
   const sc = scale(), n = sc.length;
   return Math.max(0, Math.min(127, REGS[S.reg][1] + S.root + Math.floor(d / n) * 12 + sc[((d % n) + n) % n]));
 }
-function setNotes(notes, vel) {
-  for (const o of P.sounding) if (!notes.includes(o)) send([0x80 | S.ch, o, 0]);
-  for (const n of notes) if (!P.sounding.includes(n)) send([0x90 | S.ch, n, vel]);
-  P.sounding = notes.slice();
+// Voices: 0 = playing hand, 1 = other hand, 2 = pad. What sounds is the union of all voices.
+P.voices = [[], [], []];
+function setVoice(i, notes, vel) {
+  P.voices[i] = notes.slice();
+  const want = [...new Set(P.voices.flat())];
+  for (const o of P.sounding) if (!want.includes(o)) send([0x80 | S.ch, o, 0]);
+  for (const n of want) if (!P.sounding.includes(n)) send([0x90 | S.ch, n, Math.max(1, Math.min(127, vel))]);
+  P.sounding = want;
   if (notes.length) P.shown = notes[0];
 }
-function allOff() { setNotes([], 0); P.deg = -1; P.pinchOn = false; P.harpPrev = -1; }
-function pluck(n, vel) { send([0x90 | S.ch, n, vel]); P.shown = n; setTimeout(() => send([0x80 | S.ch, n, 0]), 260); P.plucked = performance.now(); }
+function setNotes(notes, vel) { setVoice(0, notes, vel); }
+function releaseVoices() { for (let i = 0; i < P.voices.length; i++) setVoice(i, [], 0); }
+function allOff() {
+  releaseVoices(); P.deg = -1; P.pinchOn = false; P.harpPrev = -1;
+  P.hand = [{}, {}]; P.strumPrev = -1;
+}
+P.pluckT = {};
+function pluck(n, vel, dur = 260) {
+  if (P.pluckT[n]) { clearTimeout(P.pluckT[n]); send([0x80 | S.ch, n, 0]); }
+  send([0x90 | S.ch, n, Math.max(1, Math.min(127, vel))]);
+  P.shown = n; P.plucked = performance.now();
+  P.pluckT[n] = setTimeout(() => { send([0x80 | S.ch, n, 0]); delete P.pluckT[n]; }, dur);
+}
 function cc(num, val) {
   val = Math.round(clamp01(val) * 127);
   if (P.lastCC[num] === val) return;
@@ -331,11 +413,16 @@ let lastPalmX = null, lastT = 0, speed = 0;
 function processHands(hands, now) {
   const t = now / 1000;
   if (!hands.length) {
-    if (now - P.lastSeen > 150) { if (S.mode !== 'expr') setNotes([], 0); P.pinchOn = false; P.harpPrev = -1; lastPalmX = null; }
+    if (now - P.lastSeen > 150) {
+      releaseVoices(); P.pinchOn = false; P.harpPrev = -1; lastPalmX = null;
+      P.hand = [{}, {}]; P.strumPrev = -1;
+    }
     return null;
   }
   P.lastSeen = now;
   hands.sort((a, b) => palm(b).x - palm(a).x); // right of the screen first
+  if (S.mode === 'hex') return processHex(hands, t);
+  if (S.mode === 'omni') return processOmni(hands, t);
   if (S.hand === 'left' && hands.length > 1) hands.reverse();
   const h = hands[0], h2 = hands[1];
   const size = Math.max(1, dist(h, 0, 9));
@@ -407,7 +494,201 @@ function processHands(hands, now) {
   return { h, h2, x, height, open, roll, pd };
 }
 
+// ---------------------------------------------------------------- shared per-hand helpers
+P.hand = [{}, {}];
+const TIP = [[new OneEuro(8), new OneEuro(8)], [new OneEuro(8), new OneEuro(8)]];
+function tipOf(slot, h, t) { return { x: TIP[slot][0].f(mx(h[8]), t), y: TIP[slot][1].f(h[8].y, t) }; }
+function pinches(slot, h) {
+  const st = P.hand[slot], size = Math.max(1, dist(h, 0, 9)), on = S.pinch / 100;
+  const a = dist(h, 4, 8) / size, b = dist(h, 4, 12) / size;
+  st.p1 = st.p1 ? a < on + 0.15 : a < on;
+  st.p2 = st.p2 ? b < on + 0.15 : (b < on && !st.p1);
+  return st;
+}
+
+// ---------------------------------------------------------------- hexagons
+const SQ3 = Math.sqrt(3);
+function hexGeom() {
+  const W = cv.width, H = cv.height, rows = S.hexRows;
+  const R = H / (1.5 * rows + 0.5), w = SQ3 * R, x0 = w / 2, y0 = R;
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let q = -Math.ceil(r / 2) - 1; ; q++) {
+      const x = x0 + w * (q + r / 2);
+      if (x > W + w / 2) break;
+      if (x < -w / 2) continue;
+      cells.push({ q, r, x, y: y0 + 1.5 * R * r });
+    }
+  }
+  // the hexagon nearest to the centre is the root note
+  let c0 = cells[0], best = 1e9;
+  for (const c of cells) { const d = Math.hypot(c.x - W / 2, c.y - H / 2); if (d < best) { best = d; c0 = c; } }
+  return { R, w, x0, y0, cells, q0: c0.q, r0: c0.r };
+}
+function hexNote(G, q, r) {
+  const [, e, se, unit] = HEX_LAYOUTS[S.hexLayout] || HEX_LAYOUTS.harm;
+  const k = e * (q - G.q0) + se * (r - G.r0);
+  if (unit === 'deg') return noteFor(k + scale().length);
+  return Math.max(0, Math.min(127, REGS[S.reg][1] + 12 + S.root + k));
+}
+function hexAt(G, px, py) {
+  const rf = (py - G.y0) / (1.5 * G.R), qf = (px - G.x0) / G.w - rf / 2;
+  let x = qf, z = rf, y = -x - z, rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+  const dx = Math.abs(rx - x), dy = Math.abs(ry - y), dz = Math.abs(rz - z);
+  if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry;
+  return { q: rx, r: rz };
+}
+const hexCenter = (G, q, r) => ({ x: G.x0 + G.w * (q + r / 2), y: G.y0 + 1.5 * G.R * r });
+const inScale = (n) => scale().includes(((n - S.root) % 12 + 12) % 12);
+function triadOn(n) {
+  const sc = scale(), rel = ((n - S.root) % 12 + 12) % 12, i = sc.indexOf(rel);
+  if (i < 0 || sc.length < 5) return [n, n + 4, n + 7];
+  const L = sc.length, t = (sc[(i + 2) % L] - rel + 12) % 12, f = (sc[(i + 4) % L] - rel + 12) % 12;
+  return [n, n + t, n + f].map((x) => Math.min(127, x));
+}
+function processHex(hands, t) {
+  const G = hexGeom(), W = cv.width, H = cv.height;
+  const out = { hands, G, h: hands[0], h2: hands[1] };
+  for (let slot = 0; slot < 2; slot++) {
+    const h = hands[slot], st = P.hand[slot];
+    if (!h) { st.cell = null; setVoice(slot, [], 0); continue; }
+    const tip = tipOf(slot, h, t), px = tip.x * W, py = tip.y * H;
+    if (st.cell) {
+      const c = hexCenter(G, st.cell.q, st.cell.r);
+      if (Math.hypot(px - c.x, py - c.y) > G.R * 0.98) st.cell = hexAt(G, px, py);
+    } else st.cell = hexAt(G, px, py);
+    pinches(slot, h);
+    const n = hexNote(G, st.cell.q, st.cell.r);
+    st.note = n;
+    setVoice(slot, st.p1 ? [n] : (st.p2 ? triadOn(n) : []), S.vel);
+  }
+  if (S.bendOn && hands[0]) {
+    const h = hands[0], dx = (mx(h[9]) - mx(h[0])) * VW, dy = (h[9].y - h[0].y) * VH;
+    let ang = Math.atan2(dx, -dy) * 180 / Math.PI;
+    ang = Math.sign(ang) * Math.max(0, Math.abs(ang) - 6);
+    bend(F.roll.f(ang, t) / S.bendDeg);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- omnichord
+const OMNI = [ // [semitones from key, suffix, intervals]
+  [0, '', [0, 4, 7]], [9, 'm', [0, 3, 7]],
+  [5, '', [0, 4, 7]], [2, 'm', [0, 3, 7]],
+  [7, '', [0, 4, 7]], [4, 'm', [0, 3, 7]],
+  [7, '7', [0, 4, 7, 10]], [10, '', [0, 4, 7]]];
+const OMNI_BOX = { x: 0.03, y: 0.1, w: 0.42, h: 0.8, cols: 2, rows: 4 };
+const PLATE = { x: 0.6, y: 0.05, w: 0.34, h: 0.9 };
+P.omni = 0; P.strumPrev = -1; P.flash = {};
+const FLATS = ['Do', 'Reb', 'Re', 'Mib', 'Mi', 'Fa', 'Solb', 'Sol', 'Lab', 'La', 'Sib', 'Si'];
+const omniName = (i) => FLATS[(S.root + OMNI[i][0]) % 12] + OMNI[i][1];
+function omniButtonAt(x, y) {
+  const b = OMNI_BOX;
+  if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return -1;
+  const c = Math.floor((x - b.x) / b.w * b.cols), r = Math.floor((y - b.y) / b.h * b.rows);
+  return Math.min(OMNI.length - 1, r * b.cols + c);
+}
+function strings() {
+  const [off, , iv] = OMNI[P.omni], root = (S.root + off) % 12, out = [];
+  for (let n = REGS[S.reg][1]; n < 128 && out.length < S.strings; n++) {
+    if (iv.some((i) => (root + i) % 12 === ((n % 12) + 12) % 12)) out.push(n);
+  }
+  return out;
+}
+let strumLast = null;
+function processOmni(hands, t) {
+  const out = { hands, hover: -1 };
+  let chordH = null, strumH = null;
+  for (const h of hands) { if (palm(h).x < 0.5) { if (!chordH) chordH = h; } else if (!strumH) strumH = h; }
+  // chord hand (slot 1)
+  if (chordH) {
+    const tip = tipOf(1, chordH, t), st = pinches(1, chordH), i = omniButtonAt(tip.x, tip.y);
+    out.hover = i;
+    if (st.p1 && i >= 0) {
+      if (i !== P.omni) { P.omni = i; P.strumPrev = -1; }
+      if (S.pad) {
+        const root = REGS[S.reg][1] - 12 + ((S.root + OMNI[i][0]) % 12);
+        setVoice(2, OMNI[i][2].map((x) => root + x), Math.round(S.vel * 0.7));
+      }
+    } else setVoice(2, [], 0);
+  } else setVoice(2, [], 0);
+  // strum hand (slot 0)
+  if (strumH) {
+    const tip = tipOf(0, strumH, t), notes = strings(), N = notes.length;
+    const inX = tip.x > PLATE.x - 0.05 && tip.x < PLATE.x + PLATE.w + 0.05;
+    const z = Math.max(0, Math.min(N - 1, Math.floor((1 - (tip.y - PLATE.y) / PLATE.h) * N)));
+    let sp = 0;
+    if (strumLast && t > strumLast.t) sp = Math.abs(tip.y - strumLast.y) / (t - strumLast.t);
+    strumLast = { y: tip.y, t };
+    if (!inX) P.strumPrev = -1;
+    else {
+      if (P.strumPrev >= 0 && z !== P.strumPrev) {
+        const vel = Math.round((35 + clamp01(sp / 2.5) * 92) * S.vel / 127);
+        const step = z > P.strumPrev ? 1 : -1;
+        for (let k = P.strumPrev + step; k !== z + step; k += step) { pluck(notes[k], vel, 900); P.flash[k] = performance.now(); }
+      }
+      P.strumPrev = z;
+    }
+    out.strumTip = tip;
+  } else { P.strumPrev = -1; strumLast = null; }
+  out.h = strumH || chordH; out.h2 = strumH ? chordH : null;
+  return out;
+}
+
 // ---------------------------------------------------------------- drawing
+function hexPath(cx, cy, R) {
+  g.beginPath();
+  for (let k = 0; k < 6; k++) { const a = Math.PI / 180 * (60 * k - 30); g.lineTo(cx + R * Math.cos(a), cy + R * Math.sin(a)); }
+  g.closePath();
+}
+function drawHex(info) {
+  const G = info ? info.G : hexGeom(), W = cv.width;
+  const playing = new Set(P.sounding);
+  const hover = [P.hand[0].cell, P.hand[1].cell];
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const c of G.cells) {
+    const n = hexNote(G, c.q, c.r), isRoot = ((n - S.root) % 12 + 12) % 12 === 0, ins = inScale(n);
+    hexPath(c.x, c.y, G.R * 0.94);
+    g.fillStyle = playing.has(n) ? 'rgba(124,224,176,0.85)'
+      : isRoot ? 'rgba(45,90,71,0.75)' : ins ? 'rgba(40,40,52,0.62)' : 'rgba(10,10,14,0.55)';
+    g.fill();
+    for (let s = 0; s < 2; s++) {
+      if (hover[s] && hover[s].q === c.q && hover[s].r === c.r) {
+        g.lineWidth = 4; g.strokeStyle = s === 0 ? '#7ce0b0' : '#ffb020'; g.stroke();
+      }
+    }
+    g.fillStyle = playing.has(n) ? '#0b2a1d' : (ins ? '#fff' : 'rgba(255,255,255,0.35)');
+    g.font = `${isRoot ? 'bold ' : ''}${Math.max(11, G.R * 0.36)}px system-ui`;
+    g.fillText(isRoot ? noteName(n) : ROOTS[n % 12], c.x, c.y);
+  }
+  g.textBaseline = 'alphabetic';
+}
+function drawOmni(info) {
+  const W = cv.width, H = cv.height, b = OMNI_BOX, now = performance.now();
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const bw = b.w * W / b.cols, bh = b.h * H / b.rows;
+  for (let i = 0; i < OMNI.length; i++) {
+    const c = i % b.cols, r = Math.floor(i / b.cols), x = b.x * W + c * bw, y = b.y * H + r * bh;
+    g.fillStyle = i === P.omni ? (P.voices[2].length ? 'rgba(124,224,176,0.9)' : 'rgba(124,224,176,0.55)') : 'rgba(20,20,28,0.6)';
+    g.beginPath(); g.roundRect(x + 6, y + 6, bw - 12, bh - 12, 14); g.fill();
+    if (info && info.hover === i) { g.lineWidth = 4; g.strokeStyle = '#ffb020'; g.stroke(); }
+    g.fillStyle = i === P.omni ? '#0b2a1d' : '#fff';
+    g.font = `bold ${Math.max(16, bh * 0.32)}px system-ui`;
+    g.fillText(omniName(i), x + bw / 2, y + bh / 2);
+  }
+  const notes = strings(), N = notes.length, px = PLATE.x * W, pw = PLATE.w * W;
+  g.fillStyle = 'rgba(20,20,28,0.55)'; g.fillRect(px, PLATE.y * H, pw, PLATE.h * H);
+  for (let k = 0; k < N; k++) {
+    const y = (PLATE.y + PLATE.h * (1 - (k + 0.5) / N)) * H;
+    const age = now - (P.flash[k] || 0), lit = age < 350;
+    g.strokeStyle = lit ? `rgba(124,224,176,${1 - age / 350})` : 'rgba(255,255,255,0.35)';
+    g.lineWidth = lit ? 5 : 2;
+    g.beginPath(); g.moveTo(px + 44, y); g.lineTo(px + pw - 10, y); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.7)'; g.font = `${Math.max(10, H / 60)}px system-ui`;
+    g.fillText(FLATS[notes[k] % 12], px + 24, y);
+  }
+  g.textBaseline = 'alphabetic';
+}
 const cv = $('view'), g = cv.getContext('2d');
 function chordName(d) {
   const a = noteFor(d), b = noteFor(d + 2), c = noteFor(d + 4);
@@ -420,6 +701,8 @@ function draw(video, info) {
   g.save(); g.translate(W, 0); g.scale(-1, 1); g.drawImage(video, 0, 0, W, H); g.restore();
   g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, W, H);
 
+  if (S.mode === 'hex') drawHex(info);
+  if (S.mode === 'omni') drawOmni(info);
   if (S.mode === 'pro' || S.mode === 'harp' || S.mode === 'theremin') {
     const n = degrees(), w = S.width / 100, lo = 0.5 - w / 2;
     g.font = `${Math.max(11, W / 90)}px system-ui`; g.textAlign = 'center';
@@ -441,16 +724,27 @@ function draw(video, info) {
       for (const p of h) { g.beginPath(); g.arc(toX(p), toY(p), Math.max(3, W / 300), 0, 7); g.fill(); }
     });
     const h = info.h, cx = (toX(h[4]) + toX(h[8])) / 2, cy = (toY(h[4]) + toY(h[8])) / 2;
-    g.strokeStyle = '#ffb020'; g.fillStyle = '#ffb020'; g.lineWidth = 3;
-    g.beginPath(); g.arc(cx, cy, P.pinchOn ? 14 : 10, 0, 7); P.pinchOn ? g.fill() : g.stroke();
+    if (S.mode === 'hex' || S.mode === 'omni') {
+      // fingertip cursors
+      [[info.hands && info.hands[0], 0], [info.hands && info.hands[1], 1]].forEach(([hh, s]) => {
+        if (!hh) return;
+        const st = P.hand[s] || {};
+        g.fillStyle = st.p1 || st.p2 ? '#ffb020' : 'rgba(255,255,255,0.9)';
+        g.beginPath(); g.arc(toX(hh[8]), toY(hh[8]), st.p1 || st.p2 ? 12 : 8, 0, 7); g.fill();
+      });
+    } else {
+      g.strokeStyle = '#ffb020'; g.fillStyle = '#ffb020'; g.lineWidth = 3;
+      g.beginPath(); g.arc(cx, cy, P.pinchOn ? 14 : 10, 0, 7); P.pinchOn ? g.fill() : g.stroke();
+    }
     if (S.mode === 'chords') {
       g.font = `bold ${Math.max(18, W / 30)}px system-ui`; g.textAlign = 'center'; g.fillStyle = '#fff';
       g.fillText(P.fingers ? `${P.fingers} ✋  ${chordName(P.deg)}` : '✊ silencio', toX(h[0]), toY(h[0]) + Math.max(30, W / 22));
     }
   }
   const bn = $('bignote');
-  const on = P.sounding.length > 0 || (S.mode === 'harp' && performance.now() - (P.plucked || 0) < 260);
-  bn.textContent = S.mode === 'expr' ? '' : (S.mode === 'chords' && P.deg >= 0 ? chordName(P.deg) : noteName(P.shown));
+  const on = P.sounding.length > 0 || ((S.mode === 'harp' || S.mode === 'omni') && performance.now() - (P.plucked || 0) < 300);
+  bn.textContent = S.mode === 'expr' ? '' : S.mode === 'omni' ? omniName(P.omni)
+    : (S.mode === 'chords' && P.deg >= 0 ? chordName(P.deg) : noteName(P.shown));
   bn.classList.toggle('on', on);
 }
 
