@@ -658,7 +658,7 @@ public class MainActivity extends Activity {
         mbox.setOrientation(LinearLayout.VERTICAL);
         android.graphics.drawable.GradientDrawable mbg = new android.graphics.drawable.GradientDrawable();
         mbg.setColor(0xFF191A24);
-        bg.setStroke(dp(1), 0x18FFFFFF);
+        mbg.setStroke(dp(1), 0x18FFFFFF);
         mbg.setCornerRadius(dp(12));
         mbox.setBackground(mbg);
         mbox.setPadding(dp(12), dp(8), dp(12), dp(12));
