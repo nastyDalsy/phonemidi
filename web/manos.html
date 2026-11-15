@@ -413,6 +413,17 @@ function listOutputs() {
   chip.textContent = outs.length ? 'MIDI: ' + outs.map((o) => o.name).join(', ') : 'MIDI: conecta el sintetizador';
   chip.className = 'chip ' + (outs.length ? 'ok' : 'bad');
 }
+// Inside the Android app: MIDI goes through the app's own connections (FM-1, Ableton over Bluetooth).
+if (window.PhoneMIDI) {
+  navigator.requestMIDIAccess = async () => {
+    const out = {
+      id: 'phone',
+      get name() { return window.PhoneMIDI.outputName() || 'sin conexión — conéctalo en la pantalla principal'; },
+      send: (d, ts) => window.PhoneMIDI.send(Array.from(d).join(','), ts ? Math.max(0, ts - performance.now()) : 0),
+    };
+    return { outputs: new Map([['phone', out]]), onstatechange: null };
+  };
+}
 async function initMidi() {
   try {
     midi = await navigator.requestMIDIAccess({ sysex: false });
@@ -818,7 +829,7 @@ function arpPick(k) {
 }
 function scheduler() {
   if (!SEQ.playing) return;
-  const ahead = performance.now() + 120, pat = PATTERNS[S.pattern] || PATTERNS.pop, len = pat[1];
+  const ahead = performance.now() + 150, pat = PATTERNS[S.pattern] || PATTERNS.pop, len = pat[1];
   while (SEQ.next < ahead) {
     const swing = pat[2] && SEQ.step % 4 === 2 ? pat[2] * sixteenth() : 0;
     playStep(SEQ.step, SEQ.next + swing);
@@ -1048,7 +1059,12 @@ setInterval(() => {
   send(m);
 }, 60);
 window.addEventListener('beforeunload', allOff);
-window.__pm = { S, P, processHands, setOutputsForTest: (fake) => { midi = fake; listOutputs(); } };
+if (window.PhoneMIDI) {
+  document.querySelector('#start p').textContent = 'Conecta el FM-1 (o Ableton por Bluetooth) en la pantalla principal de PhoneMIDI. Apoya el teléfono frente a ti y usa buena luz.';
+  document.querySelector('.tip').style.display = 'none';
+  setInterval(listOutputs, 3000);
+}
+window.__pm = { S, P, processHands, allOff, setOutputsForTest: (fake) => { midi = fake; listOutputs(); } };
 </script>
 </body>
 </html>

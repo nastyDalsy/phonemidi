@@ -568,6 +568,13 @@ public class MainActivity extends Activity {
         rowA.addView(test, weight());
         root.addView(rowA);
 
+        Button manos = new Button(this);
+        manos.setAllCaps(false);
+        manos.setText("✋ Manos: Omnichord, Hexágonos, Mano Pro… (cámara)");
+        manos.setTextColor(0xFF7CE0B0);
+        manos.setOnClickListener(v -> startActivity(new android.content.Intent(this, ManosActivity.class)));
+        root.addView(manos);
+
         bgBtn = new Button(this);
         bgBtn.setAllCaps(false);
         bgBtn.setOnClickListener(v -> toggleBackground());

@@ -33,6 +33,12 @@
             android:foregroundServiceType="connectedDevice|microphone|camera" />
 
         <activity
+            android:name=".ManosActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
+
+        <activity
             android:name=".MainActivity"
             android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden"

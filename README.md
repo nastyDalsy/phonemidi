@@ -63,11 +63,17 @@ load the hand model.
 - To map a control: Cmd/Ctrl+M in Ableton, click a parameter, then press *Aprender brillo /
   vibrato / pitch bend* in the page (only that control is sent, sweeping). Press *Tocar normal* after.
 
+### Hands inside the app
+The main screen has **✋ Manos**: the same page runs inside the APK (WebView), fully offline
+(page, MediaPipe and the model are bundled). MIDI goes through the app's connections: the FM-1
+over Bluetooth/USB, and Ableton when "Visible por Bluetooth" is on. Connect first on the main screen.
+
 ## Project layout
     app/src/main/java/com/dalsy/phonemidi/
       MainActivity.java   UI
       Core.java           playing engine (sensors -> MIDI), independent of the screen
       PlayService.java    foreground service: keeps playing with the screen off / in other apps
+      ManosActivity.java  web/manos.html inside the app + MIDI bridge to the app's connections
       SensorEngine.java   accelerometer, gyro, camera motion, microphone -> 0..1 values
       MidiHub.java        sends every message to BLE + any connected MIDI outputs
       BlePeripheral.java  makes the phone a standard BLE MIDI device
