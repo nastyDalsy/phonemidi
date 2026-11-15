@@ -524,6 +524,51 @@ public class MainActivity extends Activity {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    // ------------------------------------------------------------ look
+
+    private android.graphics.drawable.Drawable roundBg(int fill, int stroke, float radiusDp) {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(radiusDp));
+        if (stroke != 0) g.setStroke(dp(1), stroke);
+        return new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x337CE0B0), g, null);
+    }
+
+    /** Gives every button, checkbox and bar in the tree the app's dark rounded look. */
+    private void stylize(View v) {
+        if (v instanceof Button && !(v instanceof CheckBox)) {
+            Button b = (Button) v;
+            boolean hero = b.getText().toString().startsWith("✋");
+            b.setAllCaps(false);
+            b.setTextSize(hero ? 16 : 14);
+            b.setBackground(hero
+                    ? roundBg(0xFF7CE0B0, 0, 16)
+                    : roundBg(0xFF1C1D27, 0x22FFFFFF, 14));
+            if (hero) b.setTextColor(0xFF07261A);
+            b.setStateListAnimator(null);
+            b.setMinHeight(dp(hero ? 58 : 46));
+            b.setPadding(dp(12), dp(8), dp(12), dp(8));
+            ViewGroup.LayoutParams lp = b.getLayoutParams();
+            if (lp instanceof ViewGroup.MarginLayoutParams) {
+                ((ViewGroup.MarginLayoutParams) lp).setMargins(dp(3), dp(4), dp(3), dp(4));
+                b.setLayoutParams(lp);
+            }
+        } else if (v instanceof CheckBox) {
+            ((CheckBox) v).setButtonTintList(android.content.res.ColorStateList.valueOf(0xFF7CE0B0));
+        } else if (v instanceof ProgressBar) {
+            ((ProgressBar) v).setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF7CE0B0));
+            ((ProgressBar) v).setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF2A2B36));
+        } else if (v instanceof SeekBar) {
+            ((SeekBar) v).setThumbTintList(android.content.res.ColorStateList.valueOf(0xFF7CE0B0));
+            ((SeekBar) v).setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF7CE0B0));
+        }
+        if (v instanceof ViewGroup && !(v instanceof Spinner) && !(v instanceof ListView)) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) stylize(g.getChildAt(i));
+        }
+    }
+
     private TextView label(String t) {
         TextView v = new TextView(this);
         v.setText(t);
@@ -540,7 +585,9 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(0xFF121216);
+        sv.setBackground(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF14231E, 0xFF0B0C12, 0xFF16122A}));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(14), dp(22), dp(14), dp(40));
@@ -548,7 +595,9 @@ public class MainActivity extends Activity {
 
         TextView title = new TextView(this);
         title.setText("PhoneMIDI");
-        title.setTextSize(26);
+        title.setTextSize(30);
+        title.setTypeface(android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.NORMAL));
+        title.setLetterSpacing(-0.02f);
         title.setTextColor(0xFFFFFFFF);
         root.addView(title);
 
@@ -608,7 +657,8 @@ public class MainActivity extends Activity {
         LinearLayout mbox = new LinearLayout(this);
         mbox.setOrientation(LinearLayout.VERTICAL);
         android.graphics.drawable.GradientDrawable mbg = new android.graphics.drawable.GradientDrawable();
-        mbg.setColor(0xFF1E1E26);
+        mbg.setColor(0xFF191A24);
+        bg.setStroke(dp(1), 0x18FFFFFF);
         mbg.setCornerRadius(dp(12));
         mbox.setBackground(mbg);
         mbox.setPadding(dp(12), dp(8), dp(12), dp(12));
@@ -799,6 +849,7 @@ public class MainActivity extends Activity {
 
         setContentView(sv);
         rebuild();
+        stylize(root);
     }
 
     private static int indexOf(int[] arr, int val) {
@@ -969,7 +1020,8 @@ public class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(0xFF1E1E26);
+        bg.setColor(0xFF191A24);
+        bg.setStroke(dp(1), 0x18FFFFFF);
         bg.setCornerRadius(dp(12));
         card.setBackground(bg);
         card.setPadding(dp(12), dp(10), dp(12), dp(12));
@@ -1089,6 +1141,8 @@ public class MainActivity extends Activity {
             playBox.addView(buildPlayRow(m));
             listBox.addView(buildRow(m));
         }
+        stylize(playBox);
+        stylize(listBox);
         if (maps.isEmpty()) {
             TextView e = new TextView(this);
             e.setText("Sin gestos. Elige una escena o pulsa «+ Añadir gesto».");
@@ -1155,7 +1209,8 @@ public class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(0xFF1E1E26);
+        bg.setColor(0xFF191A24);
+        bg.setStroke(dp(1), 0x18FFFFFF);
         bg.setCornerRadius(dp(10));
         if (core.solo == m) bg.setStroke(dp(2), 0xFFFFB020);
         card.setBackground(bg);

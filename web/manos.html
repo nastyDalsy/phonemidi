@@ -2,70 +2,131 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c12">
 <title>PhoneMIDI Manos</title>
 <style>
   :root {
-    --bg: #0e0e12; --panel: #17171e; --card: #1e1e27; --line: #2c2c38;
-    --text: #f2f2f6; --muted: #9a9ab0; --accent: #7ce0b0; --accent-d: #2d5a47;
-    --warn: #ffb020; --bad: #ff8a80; --radius: 12px;
+    --bg: #0b0c12; --bg2: #11131c; --glass: rgba(255,255,255,.035); --glass2: rgba(255,255,255,.06);
+    --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.14);
+    --text: #f4f4f8; --muted: #9a9cb2; --dim: #6b6d82;
+    --mint: #7ce0b0; --mint-d: #1f4a3a; --amber: #ffb020; --violet: #a78bfa; --rose: #ff7a9a; --sky: #6cc6ff;
+    --bad: #ff8a80; --r: 16px;
   }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text);
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; color: var(--text); background: var(--bg);
     font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px;
-    border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .2px; }
-  .chip { font-size: 13px; color: var(--muted); background: var(--card); border: 1px solid var(--line);
-    padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
-  .chip.ok { color: var(--accent); border-color: var(--accent-d); }
-  .chip.bad { color: var(--bad); }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-  .stage { position: relative; background: #000; border-radius: var(--radius); overflow: hidden;
-    aspect-ratio: 16 / 9; }
+  body { min-height: 100vh;
+    background: radial-gradient(1200px 600px at 10% -10%, rgba(124,224,176,.10), transparent 60%),
+                radial-gradient(900px 500px at 110% 0%, rgba(167,139,250,.10), transparent 55%), var(--bg); }
+
+  header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    padding: 12px 18px; background: rgba(11,12,18,.75); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+  .logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 17px;
+    background: linear-gradient(135deg, var(--mint), var(--violet)); color: #0b0c12; box-shadow: 0 4px 18px rgba(124,224,176,.35); }
+  .brand h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  .brand h1 span { color: var(--muted); font-weight: 500; }
+  .chip { font-size: 12.5px; color: var(--muted); background: var(--glass); border: 1px solid var(--line);
+    padding: 4px 11px 4px 9px; border-radius: 99px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+  .chip.ok { color: var(--text); } .chip.ok::before { background: var(--mint); box-shadow: 0 0 8px var(--mint); }
+  .chip.bad { color: var(--bad); } .chip.bad::before { background: var(--bad); }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 18px; padding: 18px; align-items: start; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; padding: 12px; gap: 12px; } }
+
+  .stage { position: relative; background: #000; border-radius: 22px; overflow: hidden; aspect-ratio: 16 / 9;
+    border: 1px solid var(--line2); box-shadow: 0 20px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(124,224,176,.05) inset; }
   canvas#view { width: 100%; height: 100%; display: block; }
-  .hud { position: absolute; left: 12px; top: 10px; font: 12px ui-monospace, monospace; color: #fff;
-    background: rgba(0,0,0,.45); padding: 3px 8px; border-radius: 6px; }
-  .bignote { position: absolute; right: 14px; top: 8px; font-size: 44px; font-weight: 700;
-    text-shadow: 0 2px 10px rgba(0,0,0,.7); color: var(--muted); }
-  .bignote.on { color: var(--accent); }
-  .start { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10,10,14,.92);
-    text-align: center; padding: 16px; }
-  .start p { color: var(--muted); max-width: 520px; margin: 10px auto 18px; }
-  button { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
-    border-radius: 10px; padding: 8px 12px; cursor: pointer; }
-  button:hover { border-color: var(--muted); }
-  button.primary { background: var(--accent); color: #0b2a1d; border: 0; font-weight: 650; padding: 12px 22px; font-size: 17px; }
+  .hud { position: absolute; left: 14px; top: 12px; font: 11.5px ui-monospace, SFMono-Regular, monospace; color: #e8e8f0;
+    background: rgba(0,0,0,.45); backdrop-filter: blur(6px); padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); }
+  .bignote { position: absolute; right: 16px; top: 10px; font-size: clamp(26px, 4.4vw, 52px); font-weight: 800;
+    letter-spacing: -.5px; color: rgba(255,255,255,.55); text-shadow: 0 2px 14px rgba(0,0,0,.8); transition: color .08s; }
+  .bignote.on { color: var(--mint); text-shadow: 0 0 24px rgba(124,224,176,.55), 0 2px 14px rgba(0,0,0,.8); }
+  .start { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px;
+    background: radial-gradient(600px 300px at 50% 40%, rgba(124,224,176,.12), transparent 70%), rgba(9,10,15,.94); }
+  .start h2 { margin: 0; font-size: clamp(20px, 3vw, 28px); letter-spacing: -.3px; }
+  .start p { color: var(--muted); max-width: 540px; margin: 10px auto 20px; }
+  .hint { color: var(--muted); font-size: 13.5px; margin: 12px 4px 0; line-height: 1.5; }
+  .hint b { color: var(--text); font-weight: 600; }
+
+  button { font: inherit; color: var(--text); background: var(--glass2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 9px 12px; cursor: pointer; transition: background .12s, border-color .12s, transform .06s; }
+  button:hover { border-color: var(--line2); background: rgba(255,255,255,.09); }
+  button:active { transform: scale(.98); }
+  button.primary { background: linear-gradient(135deg, var(--mint), #5fd0c8); color: #07261a; border: 0; font-weight: 700;
+    padding: 13px 28px; font-size: 17px; box-shadow: 0 8px 28px rgba(124,224,176,.35); }
+  button.big { font-weight: 650; padding: 12px; }
+  button.go { background: linear-gradient(135deg, rgba(124,224,176,.22), rgba(124,224,176,.08)); border-color: rgba(124,224,176,.4); }
+
   aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
-  .card h2 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
-    margin: 0 0 8px; font-weight: 600; }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 3px; }
-  select, input[type=number] { width: 100%; font: inherit; color: var(--text); background: var(--card);
-    border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .tabs { position: sticky; top: 62px; z-index: 4; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px;
+    background: rgba(17,19,28,.85); backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 14px; }
+  .tabs button { border: 0; background: transparent; padding: 8px 4px; font-size: 13.5px; color: var(--muted); border-radius: 10px; }
+  .tabs button.sel { background: var(--glass2); color: var(--text); box-shadow: 0 0 0 1px var(--line2) inset; }
+  .tabs button .badge { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-left: 5px; vertical-align: middle; }
+  .pane { display: none; flex-direction: column; gap: 12px; }
+  .pane.show { display: flex; }
+
+  .card { background: var(--glass); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 15px; }
+  .card h2 { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 650; }
+  .card h3 { font-size: 13px; color: var(--text); margin: 14px 0 4px; font-weight: 650; }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin: 10px 0 4px; }
+  label span { color: var(--text); }
+  select, input[type=number] { width: 100%; font: inherit; font-size: 14px; color: var(--text); background: rgba(0,0,0,.25);
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%; background-size: 5px 5px; background-repeat: no-repeat; }
+  input[type=number] { background-image: none; }
+  select:focus, input:focus { outline: 2px solid rgba(124,224,176,.35); outline-offset: 1px; }
+  input[type=range] { width: 100%; accent-color: var(--mint); height: 22px; }
   .row { display: flex; gap: 8px; }
   .row > * { flex: 1; min-width: 0; }
-  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .modes button { text-align: left; padding: 8px 10px; }
-  .modes button small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.25; margin-top: 2px; }
-  .modes button.sel { border-color: var(--accent); color: var(--accent); background: #1d2a25; }
-  .help { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
-  .check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; margin: 8px 0 0; }
-  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
-  .ccline { display: grid; grid-template-columns: auto 1fr 74px; gap: 8px; align-items: center; margin-top: 6px; font-size: 14px; }
-  .ccline input[type=number] { padding: 4px 6px; }
-  .tip { color: var(--muted); font-size: 13px; padding: 0 16px 20px; }
-  .tip b { color: var(--text); }
+
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+  .tiles.three { grid-template-columns: repeat(3, 1fr); }
+  .tiles button { text-align: left; padding: 10px 11px; min-height: 52px; border-radius: 13px; }
+  .tiles button .ic { display: block; font-size: 20px; line-height: 1; margin-bottom: 5px; }
+  .tiles button small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.3; margin-top: 2px; }
+  .tiles button.sel { border-color: rgba(124,224,176,.55); background: linear-gradient(160deg, rgba(124,224,176,.18), rgba(124,224,176,.04));
+    box-shadow: 0 0 0 1px rgba(124,224,176,.25) inset; }
+  .tiles button .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .m-pro { background: var(--mint); } .m-chords { background: var(--sky); } .m-harp { background: var(--violet); }
+  .m-theremin { background: var(--rose); } .m-omni { background: var(--amber); } .m-hex { background: #5fd0c8; } .m-expr { background: #c0c3d6; }
+
+  .help { color: var(--muted); font-size: 13px; margin: 10px 0 0; line-height: 1.5; }
+  .help b { color: var(--text); }
+  .check { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: 14px; margin: 10px 0 0; }
+  .check input, .part input[type=checkbox] { accent-color: var(--mint); width: 17px; height: 17px; flex: none; }
+  .part { display: grid; grid-template-columns: auto 1fr 96px; gap: 10px; align-items: center; padding: 7px 0; font-size: 14px;
+    border-top: 1px solid var(--line); }
+  .part:first-of-type { border-top: 0; }
+  .ccline { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; margin-top: 10px; font-size: 14px; }
+  .ccline select { grid-column: 2; }
+  .transport { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; align-items: stretch; }
+  .transport #play { font-weight: 700; font-size: 15px; }
+  .transport #play.on { background: linear-gradient(135deg, rgba(255,176,32,.3), rgba(255,176,32,.1)); border-color: rgba(255,176,32,.6); }
+  .note { border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.5; color: #d9dbe8;
+    background: linear-gradient(160deg, rgba(255,176,32,.12), rgba(255,176,32,.03)); border: 1px solid rgba(255,176,32,.25); }
+  .note b { color: #ffd27a; }
+  .tip { color: var(--dim); font-size: 12.5px; padding: 0 18px 24px; }
+  @media (max-width: 640px) {
+    header { position: static; padding: 10px 12px; gap: 6px; }
+    .brand { width: 100%; }
+    .chip { font-size: 11px; padding: 3px 9px 3px 7px; }
+    .tabs { top: 0; }
+    .tiles button { min-height: 48px; padding: 9px 10px; }
+  }
+  .tip b { color: var(--muted); }
 </style>
 </head>
 <body>
 <header>
-  <h1>PhoneMIDI · Manos</h1>
-  <span class="chip" id="chipCam">Cámara: —</span>
-  <span class="chip" id="chipDet">Detector: —</span>
-  <span class="chip" id="chipMidi">MIDI: —</span>
+  <div class="brand"><div class="logo">✋</div><h1>PhoneMIDI <span>· Manos</span></h1></div>
+  <span class="chip" id="chipCam">Cámara</span>
+  <span class="chip" id="chipDet">Detector</span>
+  <span class="chip" id="chipMidi">MIDI</span>
 </header>
 
 <main>
@@ -76,7 +137,7 @@
       <div class="bignote" id="bignote"></div>
       <div class="start" id="start">
         <div>
-          <h2 style="margin:0;font-size:22px">Toca con las manos frente a la webcam</h2>
+          <h2>Toca con las manos frente a la cámara</h2>
           <p>Conecta el FM-1 al ordenador con un cable USB-C y abre esta página en Chrome o Edge.
             Al empezar, el navegador te pedirá permiso para la cámara y para MIDI.</p>
           <button class="primary" id="go">Empezar</button>
@@ -84,85 +145,149 @@
         </div>
       </div>
     </div>
-    <p class="help" id="modeHelp"></p>
+    <p class="hint" id="modeHelp"></p>
   </section>
 
   <aside>
-    <div class="card">
-      <h2>Salida MIDI</h2>
-      <select id="out"></select>
-      <div class="row" style="margin-top:8px">
-        <div><label for="ch">Canal</label><select id="ch"></select></div>
-        <div><label for="vel">Fuerza (velocity)</label><input type="range" id="vel" min="20" max="127" value="100"></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="test">♪ Probar nota</button>
-        <button id="panic">Pánico</button>
-      </div>
+    <div class="tabs" id="tabs">
+      <button data-tab="play" class="sel">🎹 Tocar</button>
+      <button data-tab="rhythm">🥁 Ritmo</button>
+      <button data-tab="sound">🎚 Sonido</button>
+      <button data-tab="midi">🔌 MIDI</button>
     </div>
 
-    <div class="card">
-      <h2>Ableton / DAW</h2>
-      <p class="help" style="margin-top:0">Elige arriba la salida virtual (Mac: “Controlador IAC”; Windows: el puerto de loopMIDI).
-        Para mapear: en Ableton pulsa <b>MIDI</b> (Cmd/Ctrl+M), haz clic en un parámetro y pulsa aquí el control que quieres enviar solo.</p>
-      <div class="modes" id="learn">
-        <button data-learn="A">Aprender brillo</button>
-        <button data-learn="B">Aprender vibrato</button>
-        <button data-learn="PB">Aprender pitch bend</button>
-        <button data-learn="">Tocar normal</button>
+    <!-- ===================== TOCAR ===================== -->
+    <div class="pane show" data-pane="play">
+      <div class="card">
+        <h2>Presets · estilos</h2>
+        <div class="tiles" id="presets"></div>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>Presets · estilos</h2>
-      <div class="modes" id="presets"></div>
-    </div>
-
-    <div class="card">
-      <h2>Modo</h2>
-      <div class="modes" id="modes"></div>
-      <div id="hexOpts" style="display:none">
-        <label for="hexLayout">Distribución de los hexágonos</label>
-        <select id="hexLayout"></select>
-        <label for="hexRows">Tamaño: <span id="hexRowsV"></span></label>
-        <input type="range" id="hexRows" min="3" max="9" value="5">
-      </div>
-      <div id="omniOpts" style="display:none">
-        <label for="omniRows">Filas de acordes</label>
-        <select id="omniRows"></select>
-        <div class="row">
-          <div><label for="hold">El acorde…</label>
-            <select id="hold"><option value="pinch">suena mientras haces pinza</option><option value="latch">se queda (latch)</option></select></div>
-          <div><label for="sustain">Cuerdas: sustain</label>
-            <select id="sustain"><option value="250">Corto</option><option value="900">Medio</option><option value="2500">Largo</option><option value="6000">Muy largo</option></select></div>
+      <div class="card">
+        <h2>Modo</h2>
+        <div class="tiles" id="modes"></div>
+        <div id="hexOpts" style="display:none">
+          <label for="hexLayout">Distribución de los hexágonos</label>
+          <select id="hexLayout"></select>
+          <label for="hexRows">Tamaño · <span id="hexRowsV"></span></label>
+          <input type="range" id="hexRows" min="3" max="9" value="5">
         </div>
-        <label for="strings">Cuerdas en la placa: <span id="stringsV"></span></label>
-        <input type="range" id="strings" min="8" max="24" value="13">
-
-        <h2 style="margin-top:14px">Ritmo y acompañamiento</h2>
-        <div class="row">
-          <button id="play" style="flex:2">▶ Ritmo (espacio)</button>
-          <div style="flex:3"><select id="pattern"></select></div>
+        <div id="omniOpts" style="display:none">
+          <label for="omniRows">Filas de acordes</label>
+          <select id="omniRows"></select>
+          <div class="row">
+            <div><label for="hold">El acorde…</label>
+              <select id="hold"><option value="pinch">suena mientras haces pinza</option><option value="latch">se queda (latch)</option></select></div>
+            <div><label for="sustain">Sustain de cuerdas</label>
+              <select id="sustain"><option value="250">Corto</option><option value="900">Medio</option><option value="2500">Largo</option><option value="6000">Muy largo</option></select></div>
+          </div>
+          <label for="strings">Cuerdas en la placa · <span id="stringsV"></span></label>
+          <input type="range" id="strings" min="8" max="24" value="13">
+          <p class="help">El ritmo, el bajo, el arpegiador y el auto-rasgueo están en la pestaña <b>🥁 Ritmo</b>.</p>
         </div>
-        <label for="bpm">Tempo: <span id="bpmV"></span></label>
+      </div>
+    </div>
+
+    <!-- ===================== RITMO ===================== -->
+    <div class="pane" data-pane="rhythm">
+      <div class="card">
+        <h2>Ritmo · Omnichord</h2>
+        <div class="transport">
+          <button id="play" class="big">▶ Ritmo</button>
+          <select id="pattern"></select>
+        </div>
+        <label for="bpm">Tempo · <span id="bpmV"></span></label>
         <input type="range" id="bpm" min="50" max="200" value="100">
         <label class="check"><input type="checkbox" id="sync" checked> Arranque sincronizado (empieza al elegir el primer acorde)</label>
-        <div class="ccline"><input type="checkbox" id="pad" checked><span>Pad (acorde sostenido)</span><input type="range" id="lvPad" min="0" max="127" value="70" title="Nivel"></div>
-        <div class="ccline"><input type="checkbox" id="partBass" checked><span>Bajo automático</span><input type="range" id="lvBass" min="0" max="127" value="100" title="Nivel"></div>
-        <div class="ccline"><input type="checkbox" id="partChord"><span>Acordes rítmicos</span><input type="range" id="lvChord" min="0" max="127" value="80" title="Nivel"></div>
-        <div class="ccline"><input type="checkbox" id="partArp"><span>Arpegiador</span><input type="range" id="lvArp" min="0" max="127" value="90" title="Nivel"></div>
-        <div class="ccline"><input type="checkbox" id="partStrum"><span>Auto-rasgueo</span><input type="range" id="lvStrum" min="0" max="127" value="85" title="Nivel"></div>
-        <div class="ccline"><input type="checkbox" id="partDrums"><span>Batería (canal 10)</span><input type="range" id="lvDrums" min="0" max="127" value="100" title="Nivel"></div>
+        <label class="check"><input type="checkbox" id="clockOut"> Enviar reloj MIDI (Skiff / Ableton siguen este tempo)</label>
+        <p class="help">Espacio = empezar / parar.</p>
+      </div>
+      <div class="card">
+        <h2>Partes</h2>
+        <div class="part"><input type="checkbox" id="pad" checked><span>Pad (acorde sostenido)</span><input type="range" id="lvPad" min="0" max="127" value="70" title="Nivel"></div>
+        <div class="part"><input type="checkbox" id="partBass" checked><span>Bajo automático</span><input type="range" id="lvBass" min="0" max="127" value="100" title="Nivel"></div>
+        <div class="part"><input type="checkbox" id="partChord"><span>Acordes rítmicos</span><input type="range" id="lvChord" min="0" max="127" value="80" title="Nivel"></div>
+        <div class="part"><input type="checkbox" id="partArp"><span>Arpegiador</span><input type="range" id="lvArp" min="0" max="127" value="90" title="Nivel"></div>
+        <div class="part"><input type="checkbox" id="partStrum"><span>Auto-rasgueo</span><input type="range" id="lvStrum" min="0" max="127" value="85" title="Nivel"></div>
+        <div class="part"><input type="checkbox" id="partDrums"><span>Batería</span><input type="range" id="lvDrums" min="0" max="127" value="100" title="Nivel"></div>
+      </div>
+      <div class="card">
+        <h2>Arpegiador</h2>
         <div class="row">
-          <div><label for="arpPat">Arpegio</label><select id="arpPat">
+          <div><label for="arpPat">Patrón</label><select id="arpPat">
             <option value="up">Arriba</option><option value="down">Abajo</option><option value="updown">Arriba y abajo</option>
-            <option value="random">Aleatorio</option><option value="thumb">Bajo + arriba (alberti)</option></select></div>
+            <option value="random">Aleatorio</option><option value="thumb">Alberti</option></select></div>
           <div><label for="arpRate">Velocidad</label><select id="arpRate">
             <option value="1">Negras</option><option value="2">Corcheas</option><option value="3">Tresillos</option>
             <option value="4">Semicorcheas</option><option value="6">Seisillos</option></select></div>
-          <div><label for="arpOct">Octavas</label><select id="arpOct"><option>1</option><option>2</option><option>3</option></select></div>
+          <div style="flex:.7"><label for="arpOct">Octavas</label><select id="arpOct"><option>1</option><option>2</option><option>3</option></select></div>
         </div>
-        <h2 style="margin-top:14px">Canales MIDI por parte</h2>
+      </div>
+    </div>
+
+    <!-- ===================== SONIDO ===================== -->
+    <div class="pane" data-pane="sound">
+      <div class="card">
+        <h2>Notas</h2>
+        <div class="row">
+          <div><label for="scale">Escala</label><select id="scale"></select></div>
+          <div><label for="root">Tono</label><select id="root"></select></div>
+        </div>
+        <div class="row">
+          <div><label for="reg">Registro</label><select id="reg"></select></div>
+          <div><label for="oct">Octavas</label><select id="oct"></select></div>
+        </div>
+        <label for="hand">Mano que toca</label>
+        <select id="hand"><option value="right">Derecha (la de la derecha de la pantalla)</option><option value="left">Izquierda</option></select>
+      </div>
+      <div class="card">
+        <h2>Expresión</h2>
+        <label class="check"><input type="checkbox" id="bendOn" checked> Girar la muñeca dobla la nota (pitch bend)</label>
+        <label for="bendDeg">Giro para doblar al máximo · <span id="bendDegV"></span></label>
+        <input type="range" id="bendDeg" min="15" max="80" value="45">
+        <div class="ccline"><input type="checkbox" id="ccAOn" checked><span>Abrir la mano / altura controla…</span><select id="ccA"></select></div>
+        <div class="ccline"><input type="checkbox" id="ccBOn" checked><span>La otra mano (altura) controla…</span><select id="ccB"></select></div>
+      </div>
+      <div class="card">
+        <h2>Respuesta</h2>
+        <label for="smooth">Suavizado · <span id="smoothV"></span></label>
+        <input type="range" id="smooth" min="0" max="100" value="25">
+        <label for="pinch">Pinza · <span id="pinchV"></span></label>
+        <input type="range" id="pinch" min="20" max="60" value="35">
+        <label for="width">Ancho de la zona de notas · <span id="widthV"></span></label>
+        <input type="range" id="width" min="40" max="100" value="76">
+      </div>
+    </div>
+
+    <!-- ===================== MIDI ===================== -->
+    <div class="pane" data-pane="midi">
+      <div class="card">
+        <h2>Sintetizador</h2>
+        <select id="synth"></select>
+        <div id="skiffInfo" class="note" style="margin-top:10px;display:none">
+          <b>FM-1 con Skiff.</b> Cada pista escucha su canal: en el FM-1 pon <b>MENU › MIDI IN = CH1-6</b>.
+          Reparto: <b>T1</b> cuerdas y melodía · <b>T2</b> pad y acordes · <b>T3</b> bajo · <b>T4</b> arpegio ·
+          <b>T6</b> batería (motor DRUM o DRUM-X). Conecta con <b>cable USB-C</b>: Skiff no documenta MIDI por Bluetooth.
+          Para que su secuenciador siga tu tempo: activa “Enviar reloj MIDI” en 🥁 Ritmo y pon <b>MENU › MIDI CLOCK = USB</b>.
+          <div class="row" style="margin-top:10px">
+            <button id="noGlide">Quitar glide T1–T6</button>
+            <button id="levels">Volumen pistas al 80%</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Salida MIDI</h2>
+        <select id="out"></select>
+        <div class="row" style="margin-top:2px">
+          <div><label for="ch">Canal (melodía)</label><select id="ch"></select></div>
+          <div><label for="vel">Fuerza · velocity</label><input type="range" id="vel" min="20" max="127" value="100"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="test" class="go">♪ Probar nota</button>
+          <button id="panic">⏹ Pánico</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Canales por parte</h2>
         <div class="row">
           <div><label for="chStrum">Cuerdas</label><select id="chStrum"></select></div>
           <div><label for="chPad">Pad / acordes</label><select id="chPad"></select></div>
@@ -173,42 +298,19 @@
           <div><label for="chDrum">Batería</label><select id="chDrum"></select></div>
           <div></div>
         </div>
-        <p class="help">Si tu sintetizador solo tiene un sonido, deja todo en el mismo canal. Si el sonido tiene glide/portamento o es monofónico, las notas se ligarán: elige un sonido polifónico.</p>
+        <p class="help">Con un solo sonido, deja todo en el mismo canal. Si el sonido tiene glide o es monofónico, las notas se ligarán.</p>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>Notas</h2>
-      <div class="row">
-        <div><label for="scale">Escala</label><select id="scale"></select></div>
-        <div><label for="root">Tono</label><select id="root"></select></div>
+      <div class="card">
+        <h2>Ableton / DAW</h2>
+        <p class="help" style="margin-top:0">Elige la salida virtual (Mac: “Controlador IAC”; Windows: loopMIDI). Para mapear:
+          en Ableton pulsa <b>Cmd/Ctrl+M</b>, haz clic en un parámetro y pulsa aquí el control que quieres enviar solo.</p>
+        <div class="tiles" id="learn" style="margin-top:10px">
+          <button data-learn="A">Aprender control 1</button>
+          <button data-learn="B">Aprender control 2</button>
+          <button data-learn="PB">Aprender pitch bend</button>
+          <button data-learn="">Tocar normal</button>
+        </div>
       </div>
-      <div class="row">
-        <div><label for="reg">Registro</label><select id="reg"></select></div>
-        <div><label for="oct">Octavas</label><select id="oct"></select></div>
-      </div>
-      <label for="hand">Mano que toca</label>
-      <select id="hand"><option value="right">Derecha (la de la derecha de la pantalla)</option><option value="left">Izquierda</option></select>
-    </div>
-
-    <div class="card">
-      <h2>Respuesta</h2>
-      <label for="smooth">Suavizado: <span id="smoothV"></span></label>
-      <input type="range" id="smooth" min="0" max="100" value="25">
-      <label for="pinch">Pinza: <span id="pinchV"></span></label>
-      <input type="range" id="pinch" min="20" max="60" value="35">
-      <label for="width">Ancho de la zona de notas: <span id="widthV"></span></label>
-      <input type="range" id="width" min="40" max="100" value="76">
-    </div>
-
-    <div class="card">
-      <h2>Expresión</h2>
-      <label class="check"><input type="checkbox" id="bendOn" checked> Girar la muñeca dobla la nota (pitch bend)</label>
-      <label for="bendDeg">Giro para doblar al máximo: <span id="bendDegV"></span></label>
-      <input type="range" id="bendDeg" min="15" max="80" value="45">
-      <div class="ccline"><input type="checkbox" id="ccAOn" checked><span>Brillo (abrir mano / altura)</span><input type="number" id="ccA" min="0" max="127" value="74" title="Número de CC"></div>
-      <div class="ccline"><input type="checkbox" id="ccBOn" checked><span>Vibrato (otra mano: altura)</span><input type="number" id="ccB" min="0" max="127" value="1" title="Número de CC"></div>
-      <p class="help">Los números son el CC que se envía. Si tu sintetizador no responde, cambia el número.</p>
     </div>
   </aside>
 </main>
@@ -256,8 +358,11 @@ const S = { mode: 'pro', out: 'all', ch: 0, vel: 100, scale: 0, root: 0, reg: 1,
   omniRows: 'clasico', hold: 'pinch', sustain: 900, pattern: 'pop', bpm: 100, sync: true,
   partBass: true, partChord: false, partArp: false, partStrum: false, partDrums: false,
   lvPad: 70, lvBass: 100, lvChord: 80, lvArp: 90, lvStrum: 85, lvDrums: 100,
-  arpPat: 'up', arpRate: 2, arpOct: 1, chStrum: 0, chPad: 0, chBass: 0, chArp: 0, chDrum: 9 };
-try { Object.assign(S, JSON.parse(localStorage.getItem('pm-manos') || '{}')); } catch (e) { /* private mode */ }
+  arpPat: 'up', arpRate: 2, arpOct: 1, chStrum: 0, chPad: 0, chBass: 0, chArp: 0, chDrum: 9,
+  synth: 'skiff', clockOut: false, tab: 'play' };
+let savedS = {};
+try { savedS = JSON.parse(localStorage.getItem('pm-manos') || '{}'); } catch (e) { /* private mode */ }
+Object.assign(S, savedS);
 const save = () => { try { localStorage.setItem('pm-manos', JSON.stringify(S)); } catch (e) { /* ignore */ } };
 
 function fill(sel, items, val) {
@@ -300,12 +405,25 @@ const PATTERNS = {
   shuffle: ['Shuffle', 16, 0.33, { 36: 'x.......x.......', 38: '....x.......x...', 42: 'x.x.x.x.x.x.x.x.' }, 'R.R.F.F.O.O.F.F.', 'x...x...x...x...'],
   latin: ['Latino', 16, 0, { 36: 'x...x...x...x...', 75: 'x..x..x...x.x...', 56: 'x.x.x.x.x.x.x.x.' }, 'R..R..F.R..R..F.', 'x..x..x...x.x...'] };
 fill($('pattern'), Object.entries(PATTERNS).map(([k, v]) => [v[0], k]), S.pattern);
+// Named controls (Skiff's CC map; most synths and Ableton follow the same numbers)
+const CC_NAMES = { 74: 'Brillo / cutoff', 71: 'Resonancia', 1: 'Mod wheel (vibrato)', 11: 'Expresión', 7: 'Volumen de pista',
+  10: 'Panorama', 5: 'Glide', 73: 'Ataque', 75: 'Decay', 72: 'Release', 91: 'Reverb', 93: 'Chorus', 94: 'Delay' };
+const ccOptions = [...Object.entries(CC_NAMES).map(([n, name]) => [`${name} · CC ${n}`, Number(n)]),
+  ...Array.from({ length: 128 }, (_, n) => n).filter((n) => !CC_NAMES[n]).map((n) => [`CC ${n}`, n])];
+fill($('ccA'), ccOptions, S.ccA);
+fill($('ccB'), ccOptions, S.ccB);
+const SYNTHS = {
+  skiff: ['M-VAVE FM-1 con Skiff (6 pistas)', { ch: 0, chStrum: 0, chPad: 1, chBass: 2, chArp: 3, chDrum: 5 }],
+  fm1: ['M-VAVE FM-1 (firmware oficial)', { ch: 0, chStrum: 0, chPad: 0, chBass: 0, chArp: 0, chDrum: 9 }],
+  generic: ['Ableton / otro sintetizador (GM)', { ch: 0, chStrum: 0, chPad: 1, chBass: 2, chArp: 3, chDrum: 9 }] };
+fill($('synth'), Object.entries(SYNTHS).map(([k, v]) => [v[0], k]), S.synth);
+if (!('synth' in savedS)) Object.assign(S, SYNTHS[S.synth][1]); // first time: set the channels for Skiff
 const CH_KEYS = ['chStrum', 'chPad', 'chBass', 'chArp', 'chDrum'];
 for (const k of CH_KEYS) fill($(k), Array.from({ length: 16 }, (_, i) => ['Canal ' + (i + 1), i]), S[k]);
 const NUM_KEYS = ['vel', 'smooth', 'pinch', 'width', 'bendDeg', 'ccA', 'ccB', 'hexRows', 'strings', 'sustain', 'bpm',
   'lvPad', 'lvBass', 'lvChord', 'lvArp', 'lvStrum', 'lvDrums', 'arpRate', 'arpOct', ...CH_KEYS];
-const BOOL_KEYS = ['bendOn', 'ccAOn', 'ccBOn', 'pad', 'sync', 'partBass', 'partChord', 'partArp', 'partStrum', 'partDrums'];
-const STR_KEYS = ['omniRows', 'hold', 'pattern', 'arpPat'];
+const BOOL_KEYS = ['bendOn', 'ccAOn', 'ccBOn', 'pad', 'sync', 'partBass', 'partChord', 'partArp', 'partStrum', 'partDrums', 'clockOut'];
+const STR_KEYS = ['omniRows', 'hold', 'pattern', 'arpPat', 'synth'];
 function syncUI() {
   for (const k of ['ch', 'scale', 'root', 'reg', 'oct', 'hand', 'hexLayout', ...STR_KEYS]) $(k).value = String(S[k]);
   for (const k of NUM_KEYS) $(k).value = S[k];
@@ -324,10 +442,11 @@ function labels() {
 }
 syncUI();
 
+const MODE_ICONS = { pro: '🤏', chords: '✋', harp: '🪕', theremin: '〰️', omni: '🎼', hex: '⬢', expr: '🌊' };
 const modesEl = $('modes');
 for (const [k, [name]] of Object.entries(MODES)) {
   const b = document.createElement('button');
-  b.textContent = name; b.dataset.mode = k;
+  b.innerHTML = `<span class="ic">${MODE_ICONS[k] || '♪'}</span>${name}`; b.dataset.mode = k;
   b.onclick = () => {
     allOff(); S.mode = k; S.preset = '';
     // chords need a 7-note scale to make real triads
@@ -343,7 +462,24 @@ function showMode() {
   $('hexOpts').style.display = S.mode === 'hex' ? '' : 'none';
   $('omniOpts').style.display = S.mode === 'omni' ? '' : 'none';
   for (const b of $('presets').children) b.classList.toggle('sel', b.dataset.preset === S.preset);
+  const rt = document.querySelector('[data-tab=rhythm]');
+  rt.innerHTML = '🥁 Ritmo' + (S.mode === 'omni' ? '<span class="badge"></span>' : '');
+  $('skiffInfo').style.display = S.synth === 'skiff' ? '' : 'none';
 }
+// tabs
+function showTab(t) {
+  S.tab = t; save();
+  for (const b of $('tabs').children) b.classList.toggle('sel', b.dataset.tab === t);
+  for (const pn of document.querySelectorAll('.pane')) pn.classList.toggle('show', pn.dataset.pane === t);
+}
+for (const b of $('tabs').children) b.onclick = () => showTab(b.dataset.tab);
+showTab(S.tab || 'play');
+// synth profile
+$('synth').addEventListener('change', () => {
+  allOff();
+  Object.assign(S, SYNTHS[S.synth][1]);
+  save(); syncUI(); showMode();
+});
 
 // Presets: a playing style = mode + scale + key + feel
 const sc = (name) => SCALES.findIndex((x) => x[0].startsWith(name));
@@ -365,7 +501,7 @@ const PRESETS = [
 ];
 for (const [name, sub, cfg] of PRESETS) {
   const b = document.createElement('button');
-  b.innerHTML = `${name}<small>${sub}</small>`;
+  b.innerHTML = `<i class="dot m-${cfg.mode}"></i>${name}<small>${sub}</small>`;
   b.dataset.preset = name;
   b.onclick = () => {
     allOff();
@@ -778,11 +914,13 @@ const anyPart = () => S.partDrums || S.partBass || S.partChord || S.partArp || S
 function startSeq() {
   SEQ.playing = true; SEQ.step = 0; SEQ.bar = 0;
   SEQ.next = SEQ.arpNext = performance.now() + 40;
-  $('play').textContent = '■ Parar (espacio)';
+  $('play').textContent = '■ Parar'; $('play').classList.add('on');
+  if (S.clockOut) send([0xFA], SEQ.next);
 }
 function stopSeq() {
   SEQ.playing = false;
-  $('play').textContent = '▶ Ritmo (espacio)';
+  $('play').textContent = '▶ Ritmo'; $('play').classList.remove('on');
+  if (S.clockOut) send([0xFC]);
   for (const ch of new Set([S.chBass, S.chArp, S.chPad, S.chStrum, S.chDrum])) send([0xB0 | ch, 123, 0]);
 }
 const sixteenth = () => 60000 / S.bpm / 4;
@@ -791,7 +929,7 @@ function playStep(step, at) {
   if (S.partDrums) {
     for (const [note, line] of Object.entries(pat[3])) {
       const ch = line[step % line.length];
-      if (ch === 'x') noteAt(S.chDrum, Number(note), S.lvDrums * (step % 4 === 0 ? 1 : 0.8), at, d * 0.9);
+      if (ch === 'x') noteAt(S.chDrum, drumNote(Number(note)), S.lvDrums * (step % 4 === 0 ? 1 : 0.8), at, d * 0.9);
     }
   }
   if (!P.omniActive) return;
@@ -812,6 +950,9 @@ function playStep(step, at) {
     setTimeout(() => { for (let k = 0; k < notes.length; k++) P.flash[k] = performance.now(); }, Math.max(0, t0));
   }
 }
+// Skiff's DRUM kit has 8 lanes (kick, rim, snare, clap, closed/open hat, tom, bell): fold the other GM sounds onto them
+const SKIFF_DRUMS = { 51: 42, 44: 42, 75: 37, 56: 56 };
+const drumNote = (n) => (S.synth === 'skiff' && SKIFF_DRUMS[n] !== undefined ? SKIFF_DRUMS[n] : n);
 function arpNotes() {
   const c = omniChord(P.omni), base = REGS[S.reg][1] + c.root, notes = [];
   for (let o = 0; o < S.arpOct; o++) for (const i of c.iv) notes.push(base + 12 * o + i);
@@ -833,6 +974,7 @@ function scheduler() {
   while (SEQ.next < ahead) {
     const swing = pat[2] && SEQ.step % 4 === 2 ? pat[2] * sixteenth() : 0;
     playStep(SEQ.step, SEQ.next + swing);
+    if (S.clockOut) for (let k = 0; k < 6; k++) send([0xF8], SEQ.next + k * sixteenth() / 6);
     if (SEQ.step % 4 === 0) { const at = SEQ.next; setTimeout(() => { P.beat = performance.now(); }, Math.max(0, at - performance.now())); }
     SEQ.next += sixteenth();
     SEQ.step = (SEQ.step + 1) % len;
@@ -1064,6 +1206,8 @@ if (window.PhoneMIDI) {
   document.querySelector('.tip').style.display = 'none';
   setInterval(listOutputs, 3000);
 }
+$('noGlide').onclick = () => { for (let c = 0; c < 6; c++) send([0xB0 | c, 5, 0]); };
+$('levels').onclick = () => { for (let c = 0; c < 6; c++) send([0xB0 | c, 7, 102]); };
 window.__pm = { S, P, processHands, allOff, setOutputsForTest: (fake) => { midi = fake; listOutputs(); } };
 </script>
 </body>
