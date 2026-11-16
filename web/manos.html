@@ -274,6 +274,15 @@
           </div>
         </div>
       </div>
+      <div class="card" id="bleCard">
+        <h2>Bluetooth</h2>
+        <div class="row">
+          <button id="bleGo" class="go">🔵 Conectar por Bluetooth</button>
+          <button id="bleAll" style="flex:.7">Buscar todos</button>
+        </div>
+        <p class="help" id="bleState">Sin cable: conecta el FM-1 (o cualquier sinte BLE MIDI) directamente. Enciende su Bluetooth y
+          <b>no lo emparejes</b> en los ajustes del sistema. Funciona en Chrome y Edge (Windows, Mac, Android).</p>
+      </div>
       <div class="card">
         <h2>Salida MIDI</h2>
         <select id="out"></select>
@@ -525,9 +534,89 @@ function bind(id, num) {
 
 // ---------------------------------------------------------------- MIDI
 let midi = null;
+// ---- Bluetooth LE MIDI straight from the page (Web Bluetooth), for when the OS doesn't expose it to Web MIDI
+const BLE_SVC = '03b80e5a-ede8-4b33-a751-6ce34ec4c700', BLE_CHR = '7772e5db-3868-4112-a1a9-f2669d106bf3';
+const BLE = { dev: null, ch: null, q: [], busy: false, mtu: 20, name: '', manual: false };
+const bleOut = { id: 'ble', get name() { return BLE.name + ' (Bluetooth)'; }, send: (b, at) => bleSend(b, at) };
+function bleSend(bytes, at) {
+  const d = at ? at - performance.now() : 0;
+  if (d > 4) setTimeout(() => bleEnqueue(bytes), d); else bleEnqueue(bytes);
+}
+function bleEnqueue(b) {
+  if (!BLE.ch) return;
+  BLE.q.push(Array.from(b));
+  if (BLE.q.length > 600) BLE.q.splice(0, BLE.q.length - 600);
+  bleFlush();
+}
+async function bleFlush() {
+  if (BLE.busy || !BLE.ch) return;
+  BLE.busy = true;
+  try {
+    while (BLE.q.length && BLE.ch) {
+      // one BLE MIDI packet: header + (timestamp + message)*, up to the 20-byte default MTU
+      const t = Math.floor(performance.now()) & 0x1FFF, pkt = [0x80 | ((t >> 7) & 0x3F)];
+      while (BLE.q.length && pkt.length + 1 + BLE.q[0].length <= BLE.mtu) pkt.push(0x80 | (t & 0x7F), ...BLE.q.shift());
+      if (pkt.length === 1) { BLE.q.shift(); continue; }
+      const data = new Uint8Array(pkt);
+      await (BLE.ch.writeValueWithoutResponse ? BLE.ch.writeValueWithoutResponse(data) : BLE.ch.writeValue(data));
+    }
+  } catch (e) {
+    console.warn('BLE write', e);
+  } finally {
+    BLE.busy = false;
+    if (BLE.q.length && BLE.ch) setTimeout(bleFlush, 4);
+  }
+}
+function bleStatus(text, ok) {
+  $('bleState').innerHTML = text;
+  $('bleGo').textContent = BLE.ch ? '✕ Desconectar ' + BLE.name : '🔵 Conectar por Bluetooth';
+  $('bleGo').classList.toggle('go', !BLE.ch);
+  listOutputs();
+}
+async function bleAttach(dev) {
+  bleStatus('Conectando con <b>' + (dev.name || 'el dispositivo') + '</b>…');
+  const srv = await dev.gatt.connect();
+  const svc = await srv.getPrimaryService(BLE_SVC);
+  const ch = await svc.getCharacteristic(BLE_CHR);
+  try { await ch.startNotifications(); } catch (e) { /* some synths need it, others refuse */ }
+  BLE.dev = dev; BLE.ch = ch; BLE.name = dev.name || 'Bluetooth MIDI'; BLE.q = [];
+  bleStatus('<b>Conectado a ' + BLE.name + '</b> por Bluetooth. Elige “Todas las salidas” o esta salida abajo.', true);
+}
+async function bleConnect(all) {
+  if (!navigator.bluetooth) {
+    bleStatus('Este navegador no tiene Bluetooth web. Usa <b>Chrome o Edge</b>' +
+      (location.protocol === 'file:' ? ', y si no aparece, abre la página desde un servidor local (http://localhost).' : '.'));
+    return;
+  }
+  try {
+    const opts = all ? { acceptAllDevices: true, optionalServices: [BLE_SVC] }
+      : { filters: [{ services: [BLE_SVC] }], optionalServices: [BLE_SVC] };
+    const dev = await navigator.bluetooth.requestDevice(opts);
+    dev.addEventListener('gattserverdisconnected', async () => {
+      BLE.ch = null;
+      if (BLE.manual) { BLE.manual = false; bleStatus('Desconectado.'); return; }
+      bleStatus('Se perdió la conexión con <b>' + (dev.name || '') + '</b>, reintentando…');
+      try { await bleAttach(dev); } catch (e) { bleStatus('No se pudo reconectar. Pulsa “Conectar por Bluetooth”.'); }
+    });
+    await bleAttach(dev);
+  } catch (e) {
+    if (e && e.name === 'NotFoundError') bleStatus('No elegiste ningún dispositivo. Si tu sinte no sale en la lista, prueba “Buscar todos”.');
+    else bleStatus('No se pudo conectar: ' + (e && e.message ? e.message : e) + '. Comprueba que su Bluetooth MIDI está activado y no emparejado en el sistema.');
+  }
+}
+$('bleGo').onclick = () => {
+  if (BLE.ch) { BLE.manual = true; allOff(); setTimeout(() => { try { BLE.dev.gatt.disconnect(); } catch (e) { /* gone */ } }, 120); return; }
+  bleConnect(false);
+};
+$('bleAll').onclick = () => bleConnect(true);
+
+function allOutputs() {
+  const list = midi ? [...midi.outputs.values()] : [];
+  if (BLE.ch) list.push(bleOut);
+  return list;
+}
 function outputs() {
-  if (!midi) return [];
-  const all = [...midi.outputs.values()];
+  const all = allOutputs();
   return S.out === 'all' ? all : all.filter((o) => o.id === S.out);
 }
 function send(bytes, at) {
@@ -541,11 +630,11 @@ function noteAt(ch, n, vel, at, dur) {
 }
 function listOutputs() {
   const sel = $('out');
-  const outs = midi ? [...midi.outputs.values()] : [];
+  const outs = allOutputs();
   const items = [['Todas las salidas', 'all'], ...outs.map((o) => [o.name, o.id])];
   fill(sel, items, items.some((i) => i[1] === S.out) ? S.out : 'all');
   const chip = $('chipMidi');
-  if (!midi) { chip.textContent = 'MIDI: sin permiso'; chip.className = 'chip bad'; return; }
+  if (!midi && !outs.length) { chip.textContent = 'MIDI: sin permiso · prueba Bluetooth'; chip.className = 'chip bad'; return; }
   chip.textContent = outs.length ? 'MIDI: ' + outs.map((o) => o.name).join(', ') : 'MIDI: conecta el sintetizador';
   chip.className = 'chip ' + (outs.length ? 'ok' : 'bad');
 }
@@ -1204,6 +1293,7 @@ window.addEventListener('beforeunload', allOff);
 if (window.PhoneMIDI) {
   document.querySelector('#start p').textContent = 'Conecta el FM-1 (o Ableton por Bluetooth) en la pantalla principal de PhoneMIDI. Apoya el teléfono frente a ti y usa buena luz.';
   document.querySelector('.tip').style.display = 'none';
+  $('bleCard').style.display = 'none';
   setInterval(listOutputs, 3000);
 }
 $('noGlide').onclick = () => { for (let c = 0; c < 6; c++) send([0xB0 | c, 5, 0]); };

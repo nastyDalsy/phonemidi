@@ -55,6 +55,12 @@ voice, thumb+middle plays the triad) and Expresión, plus style presets (Blues, 
 Koto, Arpa celta, Pad ambient, Theremin clásico...). Nothing to install; it needs internet the first time to
 load the hand model.
 
+### Bluetooth on the computer page
+MIDI tab › **Conectar por Bluetooth** connects straight to a BLE MIDI synth (the FM-1) with Web
+Bluetooth (Chrome/Edge on Windows, Mac, Android), no cable and no OS pairing. "Buscar todos" lists
+every Bluetooth device if the synth doesn't advertise the MIDI service. Inside the app this card is
+hidden: the app's own Bluetooth connection is used.
+
 ### Ableton (computer page)
 - Mac: open *Audio MIDI Setup* > Window > Show MIDI Studio > double-click **IAC Driver** > tick
   "Device is online". Windows: install **loopMIDI** and create a port.
