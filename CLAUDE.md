@@ -14,6 +14,18 @@
 - Also uses Ableton (phone as BLE MIDI device, or the web page through IAC/loopMIDI).
 - Talks in Spanish (sometimes Catalan): answer and write the UI in Spanish.
 
+## Git: where the current code is (read this first)
+- Repository: `nastyDalsy/phonemidi` (https://github.com/nastyDalsy/phonemidi).
+- **The up-to-date app is on branch `claude/pensive-goldberg-q6rd9q`**, not on `main`.
+  `main` still has only the original upload (8 Nov 2026, commit ca27f5a) and is far behind.
+  The old branch `claude/intelligent-planck-s5xi9v` is already included in it.
+- Before changing anything in a new conversation:
+  `git fetch origin claude/pensive-goldberg-q6rd9q` and start from it
+  (`git checkout -B <your-branch> origin/claude/pensive-goldberg-q6rd9q`), or merge it into your
+  branch. Starting from `main` gives the old app and loses all later work.
+- The `latest` release (APK + manos.html) is rebuilt from whichever branch was pushed last, so a
+  push from a branch based on `main` would replace the release with the old app.
+
 ## How to build and ship
 - No Android SDK in the cloud container: the APK is built by GitHub Actions
   (`.github/workflows/build.yml`) on every push and published to the `latest` release
